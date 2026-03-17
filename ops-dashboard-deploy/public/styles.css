@@ -292,6 +292,50 @@ button.ghost {
   text-align: center;
 }
 
+.event-section {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(255,255,255,0.08);
+  display: grid;
+  gap: 10px;
+}
+.event-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+}
+button.ghost-small {
+  padding: 8px 12px;
+  font-size: 13px;
+}
+.event-row {
+  padding: 10px 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(255,255,255,0.08);
+  background: rgba(255,255,255,0.02);
+}
+.event-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.event-detail {
+  color: #e2e8ff;
+  line-height: 1.45;
+}
+.event-empty {
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px dashed rgba(255,255,255,0.12);
+  color: var(--muted);
+  font-size: 13px;
+}
+.event-more {
+  text-align: right;
+}
+
 .auth-shell {
   min-height: 100vh;
   display: flex;
