@@ -14,6 +14,15 @@ APP_PORT="${PORT:-4311}"
 DATA_DIR="${DATA_DIR:-/opt/myxxit-ops-dashboard/data}"
 USERNAME="${MYXXIT_DASHBOARD_USERNAME:-travis}"
 PASSWORD="${MYXXIT_DASHBOARD_PASSWORD:-}"
+TRAEFIK_HOST="${TRAEFIK_HOST:-ops.myxxit.dev}"
+TRAEFIK_ENTRYPOINT="${TRAEFIK_ENTRYPOINT:-websecure}"
+TRAEFIK_RESOLVER="${TRAEFIK_RESOLVER:-letsencrypt}"
+
+: "${SUPABASE_URL:?Set SUPABASE_URL for the dashboard container}"
+: "${SUPABASE_SERVICE_ROLE_KEY:?Set SUPABASE_SERVICE_ROLE_KEY for the dashboard container}"
+if [[ -z "${SUPABASE_ANON_KEY:-}" ]]; then
+  echo 'WARNING: SUPABASE_ANON_KEY is not set. Continuing, but anon client flows may be limited.' >&2
+fi
 
 mkdir -p "$STATE_DIR"
 mkdir -p "$DATA_DIR"
@@ -28,10 +37,6 @@ if [[ ! -f "$DATA_DIR/auth.json" ]]; then
     -v "$DATA_DIR":/data \
     node:20-alpine \
     node /src/scripts/bootstrap-auth.mjs /data/auth.json "$USERNAME" "$PASSWORD"
-fi
-
-if [[ ! -f "$DATA_DIR/state.json" ]]; then
-  printf '{"tasks":[]}' > "$DATA_DIR/state.json"
 fi
 
 echo "\nBuilding ${IMAGE_TAG}..."
@@ -49,6 +54,15 @@ docker run -d --name "$CONTAINER_NAME" \
   --restart unless-stopped \
   -p "${HOST_PORT}:${APP_PORT}" \
   -v "${DATA_DIR}:/app/data" \
+  -e SUPABASE_URL \
+  -e SUPABASE_ANON_KEY \
+  -e SUPABASE_SERVICE_ROLE_KEY \
+  --label "traefik.enable=true" \
+  --label "traefik.http.routers.myxxit-ops.rule=Host(\`${TRAEFIK_HOST}\`)" \
+  --label "traefik.http.routers.myxxit-ops.entrypoints=${TRAEFIK_ENTRYPOINT}" \
+  --label "traefik.http.routers.myxxit-ops.tls=true" \
+  --label "traefik.http.routers.myxxit-ops.tls.certresolver=${TRAEFIK_RESOLVER}" \
+  --label "traefik.http.services.myxxit-ops.loadbalancer.server.port=${APP_PORT}" \
   "$IMAGE_TAG"
 
 if [[ -f "$CURRENT_FILE" ]]; then

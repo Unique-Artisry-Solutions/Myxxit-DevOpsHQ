@@ -49,6 +49,39 @@ function badgeTone(kind, value) {
   return 'accent';
 }
 
+function formatEventTimestamp(value) {
+  if (!value) return '';
+  try {
+    return new Date(value).toLocaleString();
+  } catch {
+    return value;
+  }
+}
+
+function renderEventSection(task) {
+  const events = (task.events || []).slice(0, 5);
+  const content = events.length
+    ? events.map(event => `
+        <div class="event-row">
+          <div class="event-meta">
+            <span class="badge dot accent">${esc(titleCase(event.type || 'progress'))}</span>
+            <span class="muted small">${esc(formatEventTimestamp(event.createdAt) || 'recent')}</span>
+          </div>
+          <div class="event-detail">${esc(event.detail || '')}</div>
+        </div>
+      `).join('')
+    : '<div class="event-empty">No progress updates logged yet.</div>';
+  return `
+    <div class="event-section">
+      <div class="event-header">
+        <strong>Progress log</strong>
+        <button type="button" class="ghost ghost-small" onclick="logTaskEvent('${task.id}')">Log progress</button>
+      </div>
+      ${content}
+      ${task.events && task.events.length > events.length ? '<div class="event-more muted small">Showing latest updates.</div>' : ''}
+    </div>`;
+}
+
 function stats() {
   const pending = tasks.filter(t => t.approval === 'pending').length;
   const inProgress = tasks.filter(t => t.status === 'in-progress').length;
@@ -112,7 +145,7 @@ function taskCard(task) {
       <div class="task-top">
         <div class="task-copy">
           <h3>${esc(task.title)}</h3>
-          <div class="small muted">${esc(task.owner)} · ${esc(task.type)} · updated ${new Date(task.updatedAt).toLocaleString()}</div>
+          <div class="small muted">${esc(task.owner)} · ${esc(task.type)} · updated ${esc(formatEventTimestamp(task.updatedAt) || 'recent')}</div>
           <div class="meta">
             <span class="badge dot ${badgeTone('status', task.status)}">${esc(titleCase(task.status))}</span>
             <span class="badge dot ${badgeTone('risk', task.risk)}">Risk: ${esc(titleCase(task.risk))}</span>
@@ -130,6 +163,7 @@ function taskCard(task) {
       ${task.summary ? `<p><strong>Summary:</strong> ${esc(task.summary)}</p>` : ''}
       ${task.recommendation ? `<p><strong>Recommendation:</strong> ${esc(task.recommendation)}</p>` : ''}
       ${task.notes ? `<p><strong>Notes:</strong> ${esc(task.notes)}</p>` : ''}
+      ${renderEventSection(task)}
     </div>`;
 }
 
@@ -356,6 +390,21 @@ window.removeTask = async function(id) {
   await api(`/api/tasks/${id}`, { method: 'DELETE' });
   if (editingId === id) editingId = null;
   await load('Item deleted.');
+};
+
+window.logTaskEvent = async function(id) {
+  const detail = prompt('Log a progress update for this task:');
+  if (!detail) return;
+  const typeInput = prompt('Label this update (press enter for "progress")', 'progress') || 'progress';
+  try {
+    await api(`/api/tasks/${id}/events`, {
+      method: 'POST',
+      body: JSON.stringify({ detail, type: typeInput }),
+    });
+    await load('Progress update captured.');
+  } catch (err) {
+    alert(err.message);
+  }
 };
 
 async function load(message = '') {

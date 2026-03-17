@@ -3,19 +3,30 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
+import { createClient } from '@supabase/supabase-js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const dataDir = path.resolve(process.env.DATA_DIR || path.join(__dirname, 'data'));
 const publicDir = path.join(__dirname, 'public');
 const authPath = path.join(dataDir, 'auth.json');
-const statePath = path.join(dataDir, 'state.json');
 const PORT = Number(process.env.PORT || 4311);
 const HOST = process.env.HOST || '0.0.0.0';
 const SESSION_TTL_MS = 1000 * 60 * 60 * 12;
 const sessions = new Map();
 
 fs.mkdirSync(dataDir, { recursive: true });
+
+const SUPABASE_URL = process.env.SUPABASE_URL;
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+  console.error('Missing Supabase configuration. Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY.');
+  process.exit(1);
+}
+
+const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
+  auth: { persistSession: false },
+});
 
 function readJson(filePath, fallback) {
   try {
@@ -64,10 +75,6 @@ function pbkdf2(password, saltHex) {
   return crypto.pbkdf2Sync(password, Buffer.from(saltHex, 'hex'), 120000, 32, 'sha256').toString('hex');
 }
 
-function randomId(prefix = 'id') {
-  return `${prefix}-${crypto.randomBytes(6).toString('hex')}`;
-}
-
 function getSession(req) {
   const token = parseCookies(req).session;
   if (!token) return null;
@@ -111,24 +118,136 @@ function readBody(req) {
   });
 }
 
-function sanitizeTask(input, existing = null) {
-  const now = new Date().toISOString();
+function sanitizeTask(input = {}) {
   return {
-    id: existing?.id || randomId('task'),
     title: String(input.title || '').trim(),
-    type: String(input.type || 'task').trim(),
-    status: String(input.status || 'proposed').trim(),
-    risk: String(input.risk || 'low').trim(),
+    type: String(input.type || 'task').trim() || 'task',
+    status: String(input.status || 'proposed').trim() || 'proposed',
+    risk: String(input.risk || 'low').trim() || 'low',
     branch: String(input.branch || '').trim(),
-    owner: String(input.owner || 'Selym').trim(),
+    owner: String(input.owner || 'Selym').trim() || 'Selym',
     model: String(input.model || '').trim(),
     summary: String(input.summary || '').trim(),
     recommendation: String(input.recommendation || '').trim(),
-    approval: String(input.approval || 'pending').trim(),
+    approval: String(input.approval || 'pending').trim() || 'pending',
     notes: String(input.notes || '').trim(),
-    createdAt: existing?.createdAt || now,
-    updatedAt: now,
   };
+}
+
+function mapTaskRow(row = {}, events = []) {
+  const createdAt = row.created_at || row.createdAt || row.createdat || null;
+  const updatedAt = row.updated_at || row.updatedAt || row.updatedat || createdAt || null;
+  return {
+    id: row.id,
+    title: row.title || '',
+    type: row.type || 'task',
+    status: row.status || 'proposed',
+    risk: row.risk || 'low',
+    branch: row.branch || '',
+    owner: row.owner || 'Selym',
+    model: row.model || '',
+    summary: row.summary || '',
+    recommendation: row.recommendation || '',
+    approval: row.approval || 'pending',
+    notes: row.notes || '',
+    createdAt,
+    updatedAt: updatedAt || createdAt,
+    events,
+  };
+}
+
+function mapEventRow(row = {}) {
+  return {
+    id: row.id,
+    taskId: row.task_id || row.taskId,
+    type: row.event_type || row.type || 'progress',
+    detail: row.detail || row.description || '',
+    metadata: row.metadata || null,
+    createdAt: row.created_at || row.createdAt || null,
+  };
+}
+
+async function fetchTasksWithEvents() {
+  const { data: taskRows, error } = await supabase.from('tasks').select('*');
+  if (error) throw new Error(`Failed to load tasks: ${error.message}`);
+  const tasks = (taskRows || []).map(row => mapTaskRow(row));
+  const ids = tasks.map(t => t.id).filter(Boolean);
+  let eventsByTask = {};
+  if (ids.length) {
+    const { data: eventRows, error: eventError } = await supabase
+      .from('task_events')
+      .select('*')
+      .in('task_id', ids);
+    if (eventError) throw new Error(`Failed to load task events: ${eventError.message}`);
+    for (const row of eventRows || []) {
+      const event = mapEventRow(row);
+      if (!event.taskId) continue;
+      (eventsByTask[event.taskId] ||= []).push(event);
+    }
+    Object.values(eventsByTask).forEach(list => list.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0)));
+  }
+  return tasks
+    .map(task => ({ ...task, events: eventsByTask[task.id] || [] }))
+    .sort((a, b) => new Date(b.updatedAt || 0) - new Date(a.updatedAt || 0));
+}
+
+async function createTaskRecord(input, actor) {
+  const sanitized = sanitizeTask(input);
+  if (!sanitized.title) throw new Error('Title is required.');
+  const insertPayload = { ...sanitized };
+  const { data, error } = await supabase.from('tasks').insert(insertPayload).select().single();
+  if (error) throw new Error(`Failed to create task: ${error.message}`);
+  const task = mapTaskRow(data);
+  await recordTaskEvent(task.id, {
+    type: 'created',
+    detail: `${actor || 'system'} created this task.`,
+    metadata: { actor: actor || 'system' },
+  }).catch(() => {});
+  return task;
+}
+
+async function updateTaskRecord(taskId, input, actor) {
+  const sanitized = sanitizeTask(input);
+  if (!sanitized.title) throw new Error('Title is required.');
+  const { data, error } = await supabase.from('tasks').update(sanitized).eq('id', taskId).select().single();
+  if (error) throw new Error(`Failed to update task: ${error.message}`);
+  const task = mapTaskRow(data);
+  await recordTaskEvent(task.id, {
+    type: 'updated',
+    detail: `${actor || 'system'} updated the task.`,
+    metadata: { actor: actor || 'system' },
+  }).catch(() => {});
+  return task;
+}
+
+async function deleteTaskRecord(taskId) {
+  const { error } = await supabase.from('tasks').delete().eq('id', taskId);
+  if (error) throw new Error(`Failed to delete task: ${error.message}`);
+}
+
+async function recordTaskEvent(taskId, { type = 'progress', detail = '', metadata = null } = {}) {
+  if (!taskId || !detail.trim()) return null;
+  const payload = {
+    task_id: taskId,
+    event_type: type,
+    detail: detail.trim(),
+    metadata,
+  };
+  const { data, error } = await supabase.from('task_events').insert(payload).select().single();
+  if (error) throw new Error(`Failed to record task event: ${error.message}`);
+  return mapEventRow(data);
+}
+
+async function createManualTaskEvent(taskId, body, actor) {
+  if (!taskId) throw new Error('Task ID is required.');
+  const detail = String(body.detail || body.description || '').trim();
+  const type = String(body.type || 'progress').trim() || 'progress';
+  if (!detail) throw new Error('Detail is required.');
+  return recordTaskEvent(taskId, {
+    type,
+    detail,
+    metadata: { actor: actor || 'system' },
+  });
 }
 
 function routeApi(req, res) {
@@ -194,48 +313,48 @@ function routeApi(req, res) {
   if (req.method === 'GET' && url.pathname === '/api/tasks') {
     const session = requireAuth(req, res);
     if (!session) return;
-    const state = readJson(statePath, { tasks: [] });
-    const tasks = [...state.tasks].sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
-    return sendJson(res, 200, { tasks });
+    return fetchTasksWithEvents()
+      .then(tasks => sendJson(res, 200, { tasks }))
+      .catch(err => sendJson(res, 500, { error: err.message }));
   }
 
   if (req.method === 'POST' && url.pathname === '/api/tasks') {
     const session = requireAuth(req, res);
     if (!session) return;
-    return readBody(req).then(body => {
-      const state = readJson(statePath, { tasks: [] });
-      const task = sanitizeTask(body);
-      if (!task.title) return sendJson(res, 400, { error: 'Title is required.' });
-      state.tasks.push(task);
-      writeJson(statePath, state);
-      return sendJson(res, 201, { task });
-    }).catch(err => sendJson(res, 400, { error: err.message }));
+    return readBody(req)
+      .then(body => createTaskRecord(body, session.username))
+      .then(task => sendJson(res, 201, { task }))
+      .catch(err => sendJson(res, 400, { error: err.message }));
   }
 
   if (req.method === 'PUT' && url.pathname.startsWith('/api/tasks/')) {
     const session = requireAuth(req, res);
     if (!session) return;
     const taskId = url.pathname.split('/').pop();
-    return readBody(req).then(body => {
-      const state = readJson(statePath, { tasks: [] });
-      const index = state.tasks.findIndex(t => t.id === taskId);
-      if (index === -1) return sendJson(res, 404, { error: 'Task not found.' });
-      const updated = sanitizeTask(body, state.tasks[index]);
-      if (!updated.title) return sendJson(res, 400, { error: 'Title is required.' });
-      state.tasks[index] = updated;
-      writeJson(statePath, state);
-      return sendJson(res, 200, { task: updated });
-    }).catch(err => sendJson(res, 400, { error: err.message }));
+    return readBody(req)
+      .then(body => updateTaskRecord(taskId, body, session.username))
+      .then(task => sendJson(res, 200, { task }))
+      .catch(err => sendJson(res, 400, { error: err.message }));
   }
 
   if (req.method === 'DELETE' && url.pathname.startsWith('/api/tasks/')) {
     const session = requireAuth(req, res);
     if (!session) return;
     const taskId = url.pathname.split('/').pop();
-    const state = readJson(statePath, { tasks: [] });
-    state.tasks = state.tasks.filter(t => t.id !== taskId);
-    writeJson(statePath, state);
-    return sendJson(res, 200, { ok: true });
+    return deleteTaskRecord(taskId)
+      .then(() => sendJson(res, 200, { ok: true }))
+      .catch(err => sendJson(res, 400, { error: err.message }));
+  }
+
+  if (req.method === 'POST' && url.pathname.startsWith('/api/tasks/') && url.pathname.endsWith('/events')) {
+    const session = requireAuth(req, res);
+    if (!session) return;
+    const segments = url.pathname.split('/');
+    const taskId = segments.at(-2);
+    return readBody(req)
+      .then(body => createManualTaskEvent(taskId, body, session.username))
+      .then(event => sendJson(res, 201, { event }))
+      .catch(err => sendJson(res, 400, { error: err.message }));
   }
 
   return false;
