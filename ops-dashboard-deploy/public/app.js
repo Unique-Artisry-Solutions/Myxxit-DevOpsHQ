@@ -1,0 +1,370 @@
+const app = document.getElementById('app');
+let session = null;
+let tasks = [];
+let editingId = null;
+
+async function api(path, options = {}) {
+  const res = await fetch(path, {
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    ...options,
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || 'Request failed');
+  return data;
+}
+
+function esc(value = '') {
+  return String(value)
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;');
+}
+
+function titleCase(value = '') {
+  return String(value)
+    .split('-')
+    .map(part => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
+}
+
+function badgeTone(kind, value) {
+  const v = String(value || '').toLowerCase();
+  if (kind === 'risk') {
+    if (v === 'high') return 'bad';
+    if (v === 'medium') return 'warn';
+    return 'good';
+  }
+  if (kind === 'approval') {
+    if (v === 'approved') return 'good';
+    if (v === 'rejected') return 'bad';
+    return 'warn';
+  }
+  if (kind === 'status') {
+    if (['completed', 'approved'].includes(v)) return 'good';
+    if (['blocked', 'rejected'].includes(v)) return 'bad';
+    if (['waiting-approval', 'in-progress'].includes(v)) return 'warn';
+  }
+  return 'accent';
+}
+
+function stats() {
+  const pending = tasks.filter(t => t.approval === 'pending').length;
+  const inProgress = tasks.filter(t => t.status === 'in-progress').length;
+  const completed = tasks.filter(t => t.status === 'completed').length;
+  const highRisk = tasks.filter(t => t.risk === 'high').length;
+  return { pending, inProgress, completed, highRisk };
+}
+
+function renderLogin(error = '') {
+  app.innerHTML = `
+    <div class="auth-shell">
+      <div class="card auth-card">
+        <div class="hero-kicker">Private Internal Surface</div>
+        <h1>Myxxit Ops HQ</h1>
+        <p class="subtitle">Track active work, proposed changes, branch-level implementation, and approval decisions without losing the thread in chat.</p>
+
+        <div class="helper-grid">
+          <div class="helper-panel">
+            <strong>What it is</strong>
+            <div class="muted small">A private operating dashboard for Myxxit development, approvals, and task memory.</div>
+          </div>
+          <div class="helper-panel">
+            <strong>What it is not</strong>
+            <div class="muted small">Not Jira, not bloat, not a corporate sadness machine.</div>
+          </div>
+        </div>
+
+        <form id="loginForm" class="grid" style="margin-top:18px;">
+          <div>
+            <label>Username</label>
+            <input name="username" placeholder="travis" value="travis" required />
+          </div>
+          <div>
+            <label>Password</label>
+            <input name="password" type="password" required />
+          </div>
+          <button type="submit">Enter dashboard</button>
+          ${error ? `<div class="notice">${esc(error)}</div>` : ''}
+        </form>
+      </div>
+    </div>`;
+
+  document.getElementById('loginForm').onsubmit = async (e) => {
+    e.preventDefault();
+    const form = new FormData(e.target);
+    try {
+      session = await api('/api/login', {
+        method: 'POST',
+        body: JSON.stringify(Object.fromEntries(form.entries())),
+      });
+      await load();
+    } catch (err) {
+      renderLogin(err.message);
+    }
+  };
+}
+
+function taskCard(task) {
+  return `
+    <div class="task">
+      <div class="task-top">
+        <div class="task-copy">
+          <h3>${esc(task.title)}</h3>
+          <div class="small muted">${esc(task.owner)} · ${esc(task.type)} · updated ${new Date(task.updatedAt).toLocaleString()}</div>
+          <div class="meta">
+            <span class="badge dot ${badgeTone('status', task.status)}">${esc(titleCase(task.status))}</span>
+            <span class="badge dot ${badgeTone('risk', task.risk)}">Risk: ${esc(titleCase(task.risk))}</span>
+            <span class="badge dot ${badgeTone('approval', task.approval)}">Approval: ${esc(titleCase(task.approval))}</span>
+            ${task.branch ? `<span class="badge accent">${esc(task.branch)}</span>` : ''}
+            ${task.model ? `<span class="badge accent">${esc(task.model)}</span>` : ''}
+          </div>
+        </div>
+        <div class="actions">
+          <button class="ghost" onclick="startEdit('${task.id}')">Edit</button>
+          <button class="danger" onclick="removeTask('${task.id}')">Delete</button>
+        </div>
+      </div>
+
+      ${task.summary ? `<p><strong>Summary:</strong> ${esc(task.summary)}</p>` : ''}
+      ${task.recommendation ? `<p><strong>Recommendation:</strong> ${esc(task.recommendation)}</p>` : ''}
+      ${task.notes ? `<p><strong>Notes:</strong> ${esc(task.notes)}</p>` : ''}
+    </div>`;
+}
+
+function renderDashboard(message = '') {
+  const current = tasks.find(t => t.id === editingId);
+  const s = stats();
+
+  app.innerHTML = `
+    <div class="container grid">
+      <div class="card">
+        <div class="hero">
+          <div class="hero-copy">
+            <div class="hero-kicker">Myxxit Internal Control Surface</div>
+            <h1>Ops dashboard for work, approvals, and proposed changes</h1>
+            <p>Use this to track what is active, what is risky, what is waiting on Travis, and what should not quietly disappear into chat scrollback.</p>
+          </div>
+          <div class="hero-actions">
+            <span class="badge accent">signed in as ${esc(session.username || 'travis')}</span>
+            <button class="secondary" id="passwordBtn">Change password</button>
+            <button class="ghost" id="logoutBtn">Logout</button>
+          </div>
+        </div>
+
+        <div class="grid stats" style="margin-top:18px;">
+          <div class="stat">
+            <div class="label">Pending approval</div>
+            <div class="value">${s.pending}</div>
+            <div class="muted small">Waiting on a yes or no</div>
+          </div>
+          <div class="stat">
+            <div class="label">In progress</div>
+            <div class="value">${s.inProgress}</div>
+            <div class="muted small">Active work underway</div>
+          </div>
+          <div class="stat">
+            <div class="label">Completed</div>
+            <div class="value">${s.completed}</div>
+            <div class="muted small">Finished or locked in</div>
+          </div>
+          <div class="stat">
+            <div class="label">High risk</div>
+            <div class="value">${s.highRisk}</div>
+            <div class="muted small">Needs careful review</div>
+          </div>
+        </div>
+
+        ${session.mustChangePassword ? '<div class="notice">Security note: change the temporary password now.</div>' : ''}
+        ${message ? `<div class="notice">${esc(message)}</div>` : ''}
+      </div>
+
+      <div class="grid two">
+        <div class="card">
+          <div class="section-title">
+            <div>
+              <h2>${current ? 'Edit tracked item' : 'Create tracked item'}</h2>
+              <div class="muted small">Log actual work, proposed changes, review items, and branch-level status.</div>
+            </div>
+            ${current ? '<span class="badge warn">Editing mode</span>' : '<span class="badge accent">New entry</span>'}
+          </div>
+
+          <form id="taskForm" class="form-shell">
+            <div>
+              <label>Title</label>
+              <input name="title" value="${esc(current?.title || '')}" placeholder="Refactor route protection" required />
+            </div>
+
+            <div class="row">
+              <div>
+                <label>Type</label>
+                <input name="type" value="${esc(current?.type || 'task')}" placeholder="task / audit / policy / setup" />
+              </div>
+              <div>
+                <label>Status</label>
+                <select name="status">
+                  ${['proposed','in-progress','waiting-approval','approved','blocked','completed'].map(v => `<option ${current?.status===v?'selected':''}>${v}</option>`).join('')}
+                </select>
+              </div>
+            </div>
+
+            <div class="row">
+              <div>
+                <label>Risk</label>
+                <select name="risk">
+                  ${['low','medium','high'].map(v => `<option ${current?.risk===v?'selected':''}>${v}</option>`).join('')}
+                </select>
+              </div>
+              <div>
+                <label>Approval</label>
+                <select name="approval">
+                  ${['pending','approved','rejected'].map(v => `<option ${current?.approval===v?'selected':''}>${v}</option>`).join('')}
+                </select>
+              </div>
+            </div>
+
+            <div class="row">
+              <div>
+                <label>Branch</label>
+                <input name="branch" value="${esc(current?.branch || '')}" placeholder="dev/example-task" />
+              </div>
+              <div>
+                <label>Owner</label>
+                <input name="owner" value="${esc(current?.owner || 'Selym')}" />
+              </div>
+            </div>
+
+            <div>
+              <label>Model</label>
+              <input name="model" value="${esc(current?.model || '')}" placeholder="openai/gpt-5.1-codex" />
+            </div>
+
+            <div>
+              <label>Summary</label>
+              <textarea name="summary" placeholder="What changed or what is being proposed?">${esc(current?.summary || '')}</textarea>
+            </div>
+
+            <div>
+              <label>Recommendation</label>
+              <textarea name="recommendation" placeholder="What should happen next?">${esc(current?.recommendation || '')}</textarea>
+            </div>
+
+            <div>
+              <label>Notes</label>
+              <textarea name="notes" placeholder="Context, caveats, or approval notes">${esc(current?.notes || '')}</textarea>
+            </div>
+
+            <div class="form-footer">
+              <div class="muted small">Keep entries tight. This should help us think, not bury us in admin sludge.</div>
+              <div class="actions">
+                ${current ? '<button type="button" class="ghost" id="cancelEdit">Cancel</button>' : ''}
+                <button type="submit">${current ? 'Save changes' : 'Create item'}</button>
+              </div>
+            </div>
+          </form>
+        </div>
+
+        <div class="card">
+          <div class="section-title">
+            <div>
+              <h2>Tracked work</h2>
+              <div class="muted small">What exists, what is risky, and what is waiting for a decision.</div>
+            </div>
+            <span class="badge accent">${tasks.length} items</span>
+          </div>
+
+          <div class="task-list">
+            ${tasks.length ? tasks.map(taskCard).join('') : '<div class="task-empty">No tracked items yet. Add the first real work item and start using this like an ops surface, not a graveyard.</div>'}
+          </div>
+        </div>
+      </div>
+    </div>`;
+
+  document.getElementById('logoutBtn').onclick = async () => {
+    await api('/api/logout', { method: 'POST' });
+    session = null;
+    renderLogin();
+  };
+  document.getElementById('passwordBtn').onclick = renderPasswordForm;
+  document.getElementById('taskForm').onsubmit = saveTask;
+  const cancel = document.getElementById('cancelEdit');
+  if (cancel) cancel.onclick = () => { editingId = null; renderDashboard(); };
+}
+
+function renderPasswordForm(message = '', error = '') {
+  app.innerHTML = `
+    <div class="auth-shell">
+      <div class="card auth-card">
+        <div class="hero-kicker">Security</div>
+        <h1>Change dashboard password</h1>
+        <p class="subtitle">Set a new password for the private dashboard. Minimum 12 characters. Make it one you’ll remember without making it idiot bait.</p>
+        ${message ? `<div class="notice">${esc(message)}</div>` : ''}
+        ${error ? `<div class="notice">${esc(error)}</div>` : ''}
+        <form id="passwordForm" class="grid" style="margin-top:18px;">
+          <div><label>Current password</label><input name="currentPassword" type="password" required /></div>
+          <div><label>New password</label><input name="newPassword" type="password" minlength="12" required /></div>
+          <div class="actions">
+            <button type="submit">Update password</button>
+            <button type="button" class="ghost" id="backBtn">Back</button>
+          </div>
+        </form>
+      </div>
+    </div>`;
+
+  document.getElementById('backBtn').onclick = () => renderDashboard();
+  document.getElementById('passwordForm').onsubmit = async (e) => {
+    e.preventDefault();
+    const form = new FormData(e.target);
+    try {
+      await api('/api/change-password', {
+        method: 'POST',
+        body: JSON.stringify(Object.fromEntries(form.entries())),
+      });
+      session.mustChangePassword = false;
+      renderDashboard('Password updated successfully.');
+    } catch (err) {
+      renderPasswordForm('', err.message);
+    }
+  };
+}
+
+async function saveTask(e) {
+  e.preventDefault();
+  const form = new FormData(e.target);
+  const payload = Object.fromEntries(form.entries());
+  try {
+    if (editingId) {
+      await api(`/api/tasks/${editingId}`, { method: 'PUT', body: JSON.stringify(payload) });
+    } else {
+      await api('/api/tasks', { method: 'POST', body: JSON.stringify(payload) });
+    }
+    editingId = null;
+    await load('Item saved.');
+  } catch (err) {
+    renderDashboard(err.message);
+  }
+}
+
+window.startEdit = function(id) {
+  editingId = id;
+  renderDashboard();
+};
+
+window.removeTask = async function(id) {
+  if (!confirm('Delete this item?')) return;
+  await api(`/api/tasks/${id}`, { method: 'DELETE' });
+  if (editingId === id) editingId = null;
+  await load('Item deleted.');
+};
+
+async function load(message = '') {
+  const sessionData = await api('/api/session');
+  if (!sessionData.authenticated) return renderLogin();
+  session = sessionData;
+  const taskData = await api('/api/tasks');
+  tasks = taskData.tasks;
+  renderDashboard(message);
+}
+
+load().catch(() => renderLogin());
