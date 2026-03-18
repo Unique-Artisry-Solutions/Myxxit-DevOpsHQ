@@ -28,6 +28,22 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
   auth: { persistSession: false },
 });
 
+function performSupabaseHealthCheck() {
+  return supabase
+    .from('tasks')
+    .select('id', { head: true, count: 'exact' })
+    .limit(1)
+    .then(({ error }) => {
+      if (error) throw error;
+      return {
+        supabase: 'ok',
+        auth: fs.existsSync(authPath) ? 'present' : 'missing',
+        timestamp: new Date().toISOString(),
+        uptimeSeconds: Math.round(process.uptime()),
+      };
+    });
+}
+
 function readJson(filePath, fallback) {
   try {
     return JSON.parse(fs.readFileSync(filePath, 'utf8'));
@@ -486,12 +502,19 @@ function routeApi(req, res) {
 }
 
 const server = http.createServer((req, res) => {
+  const url = new URL(req.url, `http://${req.headers.host}`);
+
+  if (req.method === 'GET' && url.pathname === '/healthz') {
+    return performSupabaseHealthCheck()
+      .then(payload => sendJson(res, 200, { ok: true, ...payload }))
+      .catch(err => sendJson(res, 503, { ok: false, error: err.message }));
+  }
+
   if (req.url.startsWith('/api/')) {
     const handled = routeApi(req, res);
     if (handled !== false) return;
   }
 
-  const url = new URL(req.url, `http://${req.headers.host}`);
   let filePath = path.join(publicDir, url.pathname === '/' ? 'index.html' : url.pathname.slice(1));
   if (!filePath.startsWith(publicDir)) {
     res.writeHead(403); res.end('Forbidden'); return;
