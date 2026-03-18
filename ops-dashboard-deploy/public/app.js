@@ -1,7 +1,11 @@
 const app = document.getElementById('app');
 let session = null;
 let tasks = [];
+let roster = [];
+let rosterError = '';
 let editingId = null;
+let currentView = 'work';
+let pendingNotice = '';
 
 async function api(path, options = {}) {
   const res = await fetch(path, {
@@ -109,6 +113,196 @@ function renderEventSection(task) {
     </div>`;
 }
 
+function rosterLaneLabel(value) {
+  const lane = String(value || '').toLowerCase();
+  if (lane === 'leadership') return 'Leadership lane';
+  if (lane === 'core') return 'Core bot lane';
+  if (lane === 'specialist') return 'Specialist lane';
+  return lane ? `${lane.charAt(0).toUpperCase()}${lane.slice(1)} lane` : 'Lane';
+}
+
+function renderModelLine(label, value) {
+  if (!value) return '';
+  return `<div class="role-matrix-row"><span class="muted small">${label}</span><span>${esc(value)}</span></div>`;
+}
+
+function renderRosterCards(list) {
+  if (!list.length) {
+    return '<div class="roster-empty">No entries yet.</div>';
+  }
+  return list.map(role => `
+    <div class="role-card ${role.active !== false ? 'role-active' : 'role-standby'}">
+      <div class="role-head">
+        <div>
+          <div class="role-name">${esc(role.displayName)}</div>
+          <div class="muted small">${esc(role.role)}</div>
+        </div>
+        <div class="role-pills">
+          <span class="badge accent">${esc(rosterLaneLabel(role.lane))}</span>
+          <span class="badge ${role.active !== false ? 'good' : 'warn'}">${role.active !== false ? 'Active' : 'Standby'}</span>
+        </div>
+      </div>
+      <div class="role-section">
+        <div class="muted small">Primary responsibility</div>
+        <p>${esc(role.responsibility)}</p>
+      </div>
+      <div class="role-matrix">
+        ${renderModelLine('Default model', role.defaultModel)}
+        ${renderModelLine('Fallback model', role.fallbackModel)}
+        ${renderModelLine('Approval needed', role.approval)}
+      </div>
+      ${role.notes ? `<div class="role-notes muted small">${esc(role.notes)}</div>` : ''}
+    </div>
+  `).join('');
+}
+
+function renderRosterSection() {
+  if (rosterError) {
+    return `
+      <div class="card">
+        <div class="section-title">
+          <div>
+            <h2>Org chart roster</h2>
+            <div class="muted small">Roster entries pull directly from Supabase once seeded.</div>
+          </div>
+        </div>
+        <div class="notice">${esc(rosterError)}</div>
+      </div>`;
+  }
+  if (!roster.length) {
+    return `
+      <div class="card">
+        <div class="section-title">
+          <div>
+            <h2>Org chart roster</h2>
+            <div class="muted small">Roster entries pull directly from Supabase once seeded.</div>
+          </div>
+        </div>
+        <div class="roster-empty">No roster data found. Run scripts/roster_seed.sql to load baseline entries.</div>
+      </div>`;
+  }
+  const active = roster.filter(role => role.active !== false);
+  const standby = roster.filter(role => role.active === false);
+  return `
+    <div class="card">
+      <div class="section-title">
+        <div>
+          <h2>Org chart roster</h2>
+          <div class="muted small">Leadership + bot lanes with responsibilities, models, and approval rules.</div>
+        </div>
+        <span class="badge accent">${roster.length} entries</span>
+      </div>
+      <div class="roster-block">
+        <div class="roster-heading">
+          <strong>Active lanes</strong>
+          <span class="muted small">Recommended first wave</span>
+        </div>
+        <div class="roster-grid">
+          ${renderRosterCards(active)}
+        </div>
+      </div>
+      ${standby.length ? `
+        <div class="roster-block">
+          <div class="roster-heading">
+            <strong>Standby lanes</strong>
+            <span class="muted small">Bring online when pressure increases</span>
+          </div>
+          <div class="roster-grid">
+            ${renderRosterCards(standby)}
+          </div>
+        </div>` : ''}
+    </div>`;
+}
+
+function renderNavigationShell() {
+  return `
+    <header class="nav-shell">
+      <div class="container nav-bar">
+        <div>
+          <div class="brand-label">Myxxit Dev Ops HQ</div>
+          <div class="muted small">Internal only · ${esc(session?.username || 'travis')}</div>
+        </div>
+        <div class="nav-tabs">
+          <button type="button" class="nav-tab ${currentView === 'work' ? 'active' : ''}" data-view="work">Work surface</button>
+          <button type="button" class="nav-tab ${currentView === 'org' ? 'active' : ''}" data-view="org">Org chart</button>
+        </div>
+      </div>
+    </header>`;
+}
+
+function buildLaneStats() {
+  const lanes = new Map();
+  roster.forEach(entry => {
+    const laneKey = entry.lane || 'unsorted';
+    if (!lanes.has(laneKey)) {
+      lanes.set(laneKey, {
+        lane: laneKey,
+        active: 0,
+        standby: 0,
+        total: 0,
+        order: Number.isFinite(entry.laneOrder) ? entry.laneOrder : Number.MAX_SAFE_INTEGER,
+      });
+    }
+    const lane = lanes.get(laneKey);
+    lane.total += 1;
+    if (entry.active === false) lane.standby += 1;
+    else lane.active += 1;
+    const incomingOrder = Number.isFinite(entry.laneOrder) ? entry.laneOrder : lane.order;
+    lane.order = Math.min(lane.order, incomingOrder);
+  });
+  return Array.from(lanes.values()).sort((a, b) => {
+    if (a.order !== b.order) return a.order - b.order;
+    return a.lane.localeCompare(b.lane);
+  });
+}
+
+function renderLaneSummarySection() {
+  if (rosterError) {
+    return `<div class="notice">${esc(rosterError)}</div>`;
+  }
+  if (!roster.length) {
+    return '<div class="muted small">No roster data yet. Seed Supabase via scripts/roster_seed.sql.</div>';
+  }
+  const lanes = buildLaneStats();
+  return `
+    <div class="org-stats">
+      ${lanes.map(lane => `
+        <div class="org-stat">
+          <div class="muted small">${esc(rosterLaneLabel(lane.lane))}</div>
+          <div class="org-stat-counts">
+            <span class="org-stat-primary">${lane.active}</span>
+            <span class="muted small">active</span>
+          </div>
+          <div class="muted small">${lane.standby ? `${lane.standby} standby` : 'Fully staffed'}</div>
+        </div>
+      `).join('')}
+    </div>`;
+}
+
+function renderOrgView() {
+  const activeCount = roster.filter(role => role.active !== false).length;
+  return `
+    <div class="container grid org-view">
+      <div class="card">
+        <div class="hero">
+          <div class="hero-copy">
+            <div class="hero-kicker">Org intelligence</div>
+            <h1>Org chart + roster lanes</h1>
+            <p>Single source of truth for approved seats, responsibilities, default models, and activation status.</p>
+          </div>
+          <div class="hero-actions">
+            <span class="badge accent">${roster.length} seats tracked</span>
+            <span class="badge accent">${activeCount} active today</span>
+          </div>
+        </div>
+        <div class="org-note muted small">Keep this in sync with Supabase roster_entries. Only approved seats live here.</div>
+        ${renderLaneSummarySection()}
+      </div>
+      ${renderRosterSection()}
+    </div>`;
+}
+
+
 function stats() {
   const pending = tasks.filter(t => t.approval === 'pending').length;
   const inProgress = tasks.filter(t => t.status === 'in-progress').length;
@@ -204,12 +398,11 @@ function taskCard(task) {
     </div>`;
 }
 
-function renderDashboard(message = '') {
+function renderWorkSection(message = '') {
   const current = tasks.find(t => t.id === editingId);
   const s = stats();
-
-  app.innerHTML = `
-    <div class="container grid">
+  return `
+    <div class="container grid work-view">
       <div class="card">
         <div class="hero">
           <div class="hero-copy">
@@ -355,16 +548,64 @@ function renderDashboard(message = '') {
         </div>
       </div>
     </div>`;
+}
 
-  document.getElementById('logoutBtn').onclick = async () => {
-    await api('/api/logout', { method: 'POST' });
-    session = null;
-    renderLogin();
-  };
-  document.getElementById('passwordBtn').onclick = renderPasswordForm;
-  document.getElementById('taskForm').onsubmit = saveTask;
+
+function renderDashboard(message = '') {
+  if (message) {
+    pendingNotice = message;
+  }
+  const viewMarkup = currentView === 'org'
+    ? renderOrgView()
+    : renderWorkSection(pendingNotice);
+  if (currentView === 'work') {
+    pendingNotice = '';
+  }
+  app.innerHTML = `
+    ${renderNavigationShell()}
+    ${viewMarkup}
+  `;
+  mountNavigation();
+  if (currentView === 'work') {
+    mountWorkHandlers();
+  }
+}
+
+function mountNavigation() {
+  document.querySelectorAll('.nav-tab').forEach(button => {
+    button.onclick = () => {
+      const view = button.dataset.view;
+      if (!view || view === currentView) return;
+      currentView = view;
+      renderDashboard();
+    };
+  });
+}
+
+function mountWorkHandlers() {
+  const logoutBtn = document.getElementById('logoutBtn');
+  if (logoutBtn) {
+    logoutBtn.onclick = async () => {
+      await api('/api/logout', { method: 'POST' });
+      session = null;
+      renderLogin();
+    };
+  }
+  const passwordBtn = document.getElementById('passwordBtn');
+  if (passwordBtn) {
+    passwordBtn.onclick = renderPasswordForm;
+  }
+  const form = document.getElementById('taskForm');
+  if (form) {
+    form.onsubmit = saveTask;
+  }
   const cancel = document.getElementById('cancelEdit');
-  if (cancel) cancel.onclick = () => { editingId = null; renderDashboard(); };
+  if (cancel) {
+    cancel.onclick = () => {
+      editingId = null;
+      renderDashboard();
+    };
+  }
 }
 
 function renderPasswordForm(message = '', error = '') {
@@ -480,8 +721,17 @@ async function load(message = '') {
   const sessionData = await api('/api/session');
   if (!sessionData.authenticated) return renderLogin();
   session = sessionData;
-  const taskData = await api('/api/tasks');
+  let rosterLoadError = '';
+  const [taskData, rosterData] = await Promise.all([
+    api('/api/tasks'),
+    api('/api/roster').catch(err => {
+      rosterLoadError = err.message;
+      return { roster: [] };
+    }),
+  ]);
   tasks = taskData.tasks;
+  roster = rosterData.roster || [];
+  rosterError = rosterLoadError;
   renderDashboard(message);
 }
 

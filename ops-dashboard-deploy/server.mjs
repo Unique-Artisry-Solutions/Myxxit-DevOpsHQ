@@ -176,6 +176,23 @@ function mapEventRow(row = {}) {
   };
 }
 
+function mapRosterRow(row = {}) {
+  const laneOrderRaw = Number(row.lane_order ?? row.laneOrder ?? 0);
+  return {
+    id: row.id,
+    lane: row.lane || 'core',
+    laneOrder: Number.isFinite(laneOrderRaw) ? laneOrderRaw : 0,
+    displayName: row.display_name || row.displayName || '',
+    role: row.role_label || row.role || '',
+    responsibility: row.primary_responsibility || row.responsibility || '',
+    defaultModel: row.default_model || row.defaultModel || '',
+    fallbackModel: row.fallback_model || row.fallbackModel || '',
+    approval: row.approval_required || row.approval || '',
+    notes: row.notes || '',
+    active: typeof row.active === 'boolean' ? row.active : true,
+  };
+}
+
 async function fetchTasksWithEvents() {
   const { data: taskRows, error } = await supabase.from('tasks').select('*');
   if (error) throw new Error(`Failed to load tasks: ${error.message}`);
@@ -198,6 +215,16 @@ async function fetchTasksWithEvents() {
   return tasks
     .map(task => ({ ...task, events: eventsByTask[task.id] || [] }))
     .sort((a, b) => new Date(b.updatedAt || 0) - new Date(a.updatedAt || 0));
+}
+
+async function fetchRosterEntries() {
+  const { data, error } = await supabase
+    .from('roster_entries')
+    .select('*')
+    .order('lane_order', { ascending: true })
+    .order('display_name', { ascending: true });
+  if (error) throw new Error(`Failed to load roster: ${error.message}`);
+  return (data || []).map(row => mapRosterRow(row));
 }
 
 async function createTaskRecord(input, actor) {
@@ -376,6 +403,14 @@ function routeApi(req, res) {
       writeJson(authPath, auth);
       return sendJson(res, 200, { ok: true });
     }).catch(err => sendJson(res, 400, { error: err.message }));
+  }
+
+  if (req.method === 'GET' && url.pathname === '/api/roster') {
+    const session = requireAuth(req, res);
+    if (!session) return;
+    return fetchRosterEntries()
+      .then(roster => sendJson(res, 200, { roster }))
+      .catch(err => sendJson(res, 500, { error: err.message }));
   }
 
   if (req.method === 'GET' && url.pathname === '/api/tasks') {
