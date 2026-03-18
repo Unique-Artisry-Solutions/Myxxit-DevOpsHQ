@@ -119,6 +119,12 @@ function readBody(req) {
 }
 
 function sanitizeTask(input = {}) {
+  const clampProgress = (value) => {
+    if (value === '' || value === null || value === undefined) return 0;
+    const num = Number(value);
+    if (Number.isNaN(num)) return 0;
+    return Math.max(0, Math.min(100, Math.round(num)));
+  };
   return {
     title: String(input.title || '').trim(),
     type: String(input.type || 'task').trim() || 'task',
@@ -131,12 +137,14 @@ function sanitizeTask(input = {}) {
     recommendation: String(input.recommendation || '').trim(),
     approval: String(input.approval || 'pending').trim() || 'pending',
     notes: String(input.notes || '').trim(),
+    progress: clampProgress(input.progress),
   };
 }
 
 function mapTaskRow(row = {}, events = []) {
   const createdAt = row.created_at || row.createdAt || row.createdat || null;
   const updatedAt = row.updated_at || row.updatedAt || row.updatedat || createdAt || null;
+  const progressValue = Number(row.progress);
   return {
     id: row.id,
     title: row.title || '',
@@ -150,6 +158,7 @@ function mapTaskRow(row = {}, events = []) {
     recommendation: row.recommendation || '',
     approval: row.approval || 'pending',
     notes: row.notes || '',
+    progress: Number.isFinite(progressValue) ? Math.max(0, Math.min(100, Math.round(progressValue))) : 0,
     createdAt,
     updatedAt: updatedAt || createdAt,
     events,
@@ -225,6 +234,12 @@ async function deleteTaskRecord(taskId) {
   if (error) throw new Error(`Failed to delete task: ${error.message}`);
 }
 
+async function getTaskRecord(taskId) {
+  const { data, error } = await supabase.from('tasks').select('*').eq('id', taskId).single();
+  if (error) throw new Error(`Failed to load task: ${error.message}`);
+  return mapTaskRow(data);
+}
+
 async function recordTaskEvent(taskId, { type = 'progress', detail = '', metadata = null } = {}) {
   if (!taskId || !detail.trim()) return null;
   const payload = {
@@ -238,6 +253,19 @@ async function recordTaskEvent(taskId, { type = 'progress', detail = '', metadat
   return mapEventRow(data);
 }
 
+async function transitionTask(taskId, patch, actor, detail, type = 'status-change') {
+  if (!taskId) throw new Error('Task ID is required.');
+  const { data, error } = await supabase.from('tasks').update(patch).eq('id', taskId).select().single();
+  if (error) throw new Error(`Failed to update task: ${error.message}`);
+  const task = mapTaskRow(data);
+  await recordTaskEvent(task.id, {
+    type,
+    detail,
+    metadata: { actor: actor || 'system', patch },
+  }).catch(() => {});
+  return task;
+}
+
 async function createManualTaskEvent(taskId, body, actor) {
   if (!taskId) throw new Error('Task ID is required.');
   const detail = String(body.detail || body.description || '').trim();
@@ -248,6 +276,46 @@ async function createManualTaskEvent(taskId, body, actor) {
     detail,
     metadata: { actor: actor || 'system' },
   });
+}
+
+async function approveTask(taskId, body, actor) {
+  const task = await getTaskRecord(taskId);
+  if (task.approval === 'approved' && ['approved', 'completed'].includes(task.status)) {
+    return task;
+  }
+  const detailNote = String(body?.note || '').trim();
+  const patch = {
+    approval: 'approved',
+    status: ['in-progress', 'completed'].includes(task.status) ? task.status : 'approved',
+  };
+  if (task.progress < 25) patch.progress = 25;
+  return transitionTask(
+    taskId,
+    patch,
+    actor,
+    `${actor || 'system'} approved this task.${detailNote ? ` Note: ${detailNote}` : ''}`.trim(),
+    'approval'
+  );
+}
+
+async function beginDevelopment(taskId, body, actor) {
+  const task = await getTaskRecord(taskId);
+  if (['in-progress', 'completed'].includes(task.status)) {
+    return task;
+  }
+  const detailNote = String(body?.note || '').trim();
+  const patch = {
+    status: 'in-progress',
+    approval: task.approval,
+    progress: task.progress < 10 ? 10 : task.progress,
+  };
+  return transitionTask(
+    taskId,
+    patch,
+    actor,
+    `${actor || 'system'} began development on this task.${detailNote ? ` Note: ${detailNote}` : ''}`.trim(),
+    'status-change'
+  );
 }
 
 function routeApi(req, res) {
@@ -354,6 +422,28 @@ function routeApi(req, res) {
     return readBody(req)
       .then(body => createManualTaskEvent(taskId, body, session.username))
       .then(event => sendJson(res, 201, { event }))
+      .catch(err => sendJson(res, 400, { error: err.message }));
+  }
+
+  if (req.method === 'POST' && url.pathname.startsWith('/api/tasks/') && url.pathname.endsWith('/approve')) {
+    const session = requireAuth(req, res);
+    if (!session) return;
+    const segments = url.pathname.split('/');
+    const taskId = segments.at(-2);
+    return readBody(req).catch(() => ({}))
+      .then(body => approveTask(taskId, body, session.username))
+      .then(task => sendJson(res, 200, { task }))
+      .catch(err => sendJson(res, 400, { error: err.message }));
+  }
+
+  if (req.method === 'POST' && url.pathname.startsWith('/api/tasks/') && url.pathname.endsWith('/begin')) {
+    const session = requireAuth(req, res);
+    if (!session) return;
+    const segments = url.pathname.split('/');
+    const taskId = segments.at(-2);
+    return readBody(req).catch(() => ({}))
+      .then(body => beginDevelopment(taskId, body, session.username))
+      .then(task => sendJson(res, 200, { task }))
       .catch(err => sendJson(res, 400, { error: err.message }));
   }
 
