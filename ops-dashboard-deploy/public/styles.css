@@ -157,10 +157,19 @@ button.danger {
   background: linear-gradient(135deg, #ef4444, #dc2626);
   box-shadow: 0 10px 30px rgba(239, 68, 68, 0.2);
 }
+button.success {
+  background: linear-gradient(135deg, #22c55e, #16a34a);
+  box-shadow: 0 10px 30px rgba(34, 197, 94, 0.25);
+}
 button.ghost {
   background: transparent;
   border: 1px solid rgba(255,255,255,0.12);
   color: #dfe6ff;
+  box-shadow: none;
+}
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
   box-shadow: none;
 }
 
@@ -267,6 +276,41 @@ button.ghost {
   line-height: 1.55;
   color: #e7ecff;
 }
+.progress-shell {
+  margin: 6px 0 2px;
+  display: grid;
+  gap: 6px;
+}
+.progress-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.progress-value {
+  font-weight: 600;
+}
+.progress-track {
+  width: 100%;
+  height: 10px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.08);
+  overflow: hidden;
+}
+.progress-fill {
+  height: 100%;
+  border-radius: 999px;
+  transition: width 200ms ease;
+}
+.progress-fill.good {
+  background: linear-gradient(90deg, rgba(34,197,94,0.9), rgba(16,185,129,0.95));
+}
+.progress-fill.warn {
+  background: linear-gradient(90deg, rgba(245,158,11,0.9), rgba(250,204,21,0.9));
+}
+.progress-fill.bad {
+  background: linear-gradient(90deg, rgba(239,68,68,0.9), rgba(248,113,113,0.9));
+}
 .meta {
   display: flex;
   flex-wrap: wrap;
@@ -279,6 +323,15 @@ button.ghost {
   justify-content: space-between;
   gap: 12px;
   align-items: center;
+}
+.task-action-bar {
+  margin: 12px 0 6px;
+}
+.actions.tight {
+  width: 100%;
+}
+.actions.tight button {
+  flex: 1 1 0;
 }
 .task-copy {
   display: grid;
