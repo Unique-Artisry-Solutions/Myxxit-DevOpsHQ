@@ -49,6 +49,33 @@ function badgeTone(kind, value) {
   return 'accent';
 }
 
+function normalizeProgress(value) {
+  const num = Number(value);
+  if (Number.isNaN(num)) return 0;
+  return Math.max(0, Math.min(100, Math.round(num)));
+}
+
+function progressTone(value) {
+  if (value >= 80) return 'good';
+  if (value >= 40) return 'warn';
+  return 'bad';
+}
+
+function renderProgressIndicator(task) {
+  const value = normalizeProgress(task.progress);
+  const tone = progressTone(value);
+  return `
+    <div class="progress-shell">
+      <div class="progress-head">
+        <span class="muted small">Progress</span>
+        <span class="progress-value">${value}%</span>
+      </div>
+      <div class="progress-track">
+        <div class="progress-fill ${tone}" style="width:${value}%"></div>
+      </div>
+    </div>`;
+}
+
 function formatEventTimestamp(value) {
   if (!value) return '';
   try {
@@ -140,6 +167,8 @@ function renderLogin(error = '') {
 }
 
 function taskCard(task) {
+  const approveDisabled = task.approval === 'approved';
+  const beginDisabled = ['in-progress', 'completed'].includes(task.status);
   return `
     <div class="task">
       <div class="task-top">
@@ -157,6 +186,14 @@ function taskCard(task) {
         <div class="actions">
           <button class="ghost" onclick="startEdit('${task.id}')">Edit</button>
           <button class="danger" onclick="removeTask('${task.id}')">Delete</button>
+        </div>
+      </div>
+
+      ${renderProgressIndicator(task)}
+      <div class="task-action-bar">
+        <div class="actions tight">
+          <button class="secondary" onclick="beginDevelopment('${task.id}')" ${beginDisabled ? 'disabled' : ''}>Begin development</button>
+          <button class="success" onclick="approveTask('${task.id}')" ${approveDisabled ? 'disabled' : ''}>Approve</button>
         </div>
       </div>
 
@@ -266,6 +303,10 @@ function renderDashboard(message = '') {
               <div>
                 <label>Owner</label>
                 <input name="owner" value="${esc(current?.owner || 'Selym')}" />
+              </div>
+              <div>
+                <label>Progress (%)</label>
+                <input name="progress" type="number" min="0" max="100" value="${esc(normalizeProgress(current?.progress ?? 0))}" />
               </div>
             </div>
 
@@ -402,6 +443,34 @@ window.logTaskEvent = async function(id) {
       body: JSON.stringify({ detail, type: typeInput }),
     });
     await load('Progress update captured.');
+  } catch (err) {
+    alert(err.message);
+  }
+};
+
+window.approveTask = async function(id) {
+  const note = prompt('Add an approval note (optional):', '') || '';
+  const payload = note.trim() ? { note: note.trim() } : {};
+  try {
+    await api(`/api/tasks/${id}/approve`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    await load('Task approved.');
+  } catch (err) {
+    alert(err.message);
+  }
+};
+
+window.beginDevelopment = async function(id) {
+  const note = prompt('Kickoff note (optional):', '') || '';
+  const payload = note.trim() ? { note: note.trim() } : {};
+  try {
+    await api(`/api/tasks/${id}/begin`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    await load('Marked as in development.');
   } catch (err) {
     alert(err.message);
   }
