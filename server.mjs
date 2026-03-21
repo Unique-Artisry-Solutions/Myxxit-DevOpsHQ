@@ -56,6 +56,24 @@ function writeJson(filePath, value) {
   fs.writeFileSync(filePath, JSON.stringify(value, null, 2));
 }
 
+function getAuth() {
+  const fileAuth = readJson(authPath, null);
+  if (fileAuth) return { ...fileAuth, source: 'file' };
+  const envUser = process.env.AUTH_USERNAME;
+  const envSalt = process.env.AUTH_SALT;
+  const envHash = process.env.AUTH_PASSWORD_HASH;
+  if (envUser && envSalt && envHash) {
+    return {
+      username: envUser,
+      salt: envSalt,
+      passwordHash: envHash,
+      mustChangePassword: true,
+      source: 'env',
+    };
+  }
+  return null;
+}
+
 function parseCookies(req) {
   const raw = req.headers.cookie || '';
   return Object.fromEntries(raw.split(';').map(part => part.trim()).filter(Boolean).map(part => {
@@ -369,7 +387,7 @@ function routeApi(req, res) {
 
   if (req.method === 'POST' && url.pathname === '/api/login') {
     return readBody(req).then(body => {
-      const auth = readJson(authPath, null);
+      const auth = getAuth();
       const username = String(body.username || '');
       const password = String(body.password || '');
       if (!auth || username !== auth.username || pbkdf2(password, auth.salt) !== auth.passwordHash) {
@@ -410,7 +428,7 @@ function routeApi(req, res) {
       if (newPassword.length < 12) {
         return sendJson(res, 400, { error: 'New password must be at least 12 characters.' });
       }
-      const auth = readJson(authPath, null);
+      const auth = getAuth();
       if (pbkdf2(currentPassword, auth.salt) !== auth.passwordHash) {
         return sendJson(res, 401, { error: 'Current password is incorrect.' });
       }
