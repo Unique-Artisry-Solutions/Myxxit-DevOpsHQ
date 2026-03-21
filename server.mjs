@@ -109,7 +109,16 @@ function pbkdf2(password, saltHex) {
   return crypto.pbkdf2Sync(password, Buffer.from(saltHex, 'hex'), 120000, 32, 'sha256').toString('hex');
 }
 
-function getSession(req) {
+function getPrincipal(req) {
+  // 1. Check for API Key
+  const authHeader = req.headers.authorization || '';
+  const tokenMatch = authHeader.match(/^Bearer\s+(.+)$/);
+  const apiKey = process.env.API_KEY;
+  if (apiKey && tokenMatch && tokenMatch[1] === apiKey) {
+    return { username: 'Selym-API', source: 'apiKey' };
+  }
+
+  // 2. Fallback to session cookie
   const token = parseCookies(req).session;
   if (!token) return null;
   const session = sessions.get(token);
@@ -119,16 +128,16 @@ function getSession(req) {
     return null;
   }
   session.expiresAt = Date.now() + SESSION_TTL_MS;
-  return { token, ...session };
+  return { ...session, source: 'session' };
 }
 
 function requireAuth(req, res) {
-  const session = getSession(req);
-  if (!session) {
+  const principal = getPrincipal(req);
+  if (!principal) {
     sendJson(res, 401, { error: 'Authentication required' });
     return null;
   }
-  return session;
+  return principal;
 }
 
 function readBody(req) {
@@ -420,8 +429,8 @@ function routeApi(req, res) {
   }
 
   if (req.method === 'POST' && url.pathname === '/api/change-password') {
-    const session = requireAuth(req, res);
-    if (!session) return;
+    const principal = requireAuth(req, res);
+    if (!principal) return;
     return readBody(req).then(body => {
       const currentPassword = String(body.currentPassword || '');
       const newPassword = String(body.newPassword || '');
@@ -443,43 +452,43 @@ function routeApi(req, res) {
   }
 
   if (req.method === 'GET' && url.pathname === '/api/roster') {
-    const session = requireAuth(req, res);
-    if (!session) return;
+    const principal = requireAuth(req, res);
+    if (!principal) return;
     return fetchRosterEntries()
       .then(roster => sendJson(res, 200, { roster }))
       .catch(err => sendJson(res, 500, { error: err.message }));
   }
 
   if (req.method === 'GET' && url.pathname === '/api/tasks') {
-    const session = requireAuth(req, res);
-    if (!session) return;
+    const principal = requireAuth(req, res);
+    if (!principal) return;
     return fetchTasksWithEvents()
       .then(tasks => sendJson(res, 200, { tasks }))
       .catch(err => sendJson(res, 500, { error: err.message }));
   }
 
   if (req.method === 'POST' && url.pathname === '/api/tasks') {
-    const session = requireAuth(req, res);
-    if (!session) return;
+    const principal = requireAuth(req, res);
+    if (!principal) return;
     return readBody(req)
-      .then(body => createTaskRecord(body, session.username))
+      .then(body => createTaskRecord(body, principal.username))
       .then(task => sendJson(res, 201, { task }))
       .catch(err => sendJson(res, 400, { error: err.message }));
   }
 
   if (req.method === 'PUT' && url.pathname.startsWith('/api/tasks/')) {
-    const session = requireAuth(req, res);
-    if (!session) return;
+    const principal = requireAuth(req, res);
+    if (!principal) return;
     const taskId = url.pathname.split('/').pop();
     return readBody(req)
-      .then(body => updateTaskRecord(taskId, body, session.username))
+      .then(body => updateTaskRecord(taskId, body, principal.username))
       .then(task => sendJson(res, 200, { task }))
       .catch(err => sendJson(res, 400, { error: err.message }));
   }
 
   if (req.method === 'DELETE' && url.pathname.startsWith('/api/tasks/')) {
-    const session = requireAuth(req, res);
-    if (!session) return;
+    const principal = requireAuth(req, res);
+    if (!principal) return;
     const taskId = url.pathname.split('/').pop();
     return deleteTaskRecord(taskId)
       .then(() => sendJson(res, 200, { ok: true }))
@@ -487,34 +496,34 @@ function routeApi(req, res) {
   }
 
   if (req.method === 'POST' && url.pathname.startsWith('/api/tasks/') && url.pathname.endsWith('/events')) {
-    const session = requireAuth(req, res);
-    if (!session) return;
+    const principal = requireAuth(req, res);
+    if (!principal) return;
     const segments = url.pathname.split('/');
     const taskId = segments.at(-2);
     return readBody(req)
-      .then(body => createManualTaskEvent(taskId, body, session.username))
+      .then(body => createManualTaskEvent(taskId, body, principal.username))
       .then(event => sendJson(res, 201, { event }))
       .catch(err => sendJson(res, 400, { error: err.message }));
   }
 
   if (req.method === 'POST' && url.pathname.startsWith('/api/tasks/') && url.pathname.endsWith('/approve')) {
-    const session = requireAuth(req, res);
-    if (!session) return;
+    const principal = requireAuth(req, res);
+    if (!principal) return;
     const segments = url.pathname.split('/');
     const taskId = segments.at(-2);
     return readBody(req).catch(() => ({}))
-      .then(body => approveTask(taskId, body, session.username))
+      .then(body => approveTask(taskId, body, principal.username))
       .then(task => sendJson(res, 200, { task }))
       .catch(err => sendJson(res, 400, { error: err.message }));
   }
 
   if (req.method === 'POST' && url.pathname.startsWith('/api/tasks/') && url.pathname.endsWith('/begin')) {
-    const session = requireAuth(req, res);
-    if (!session) return;
+    const principal = requireAuth(req, res);
+    if (!principal) return;
     const segments = url.pathname.split('/');
     const taskId = segments.at(-2);
     return readBody(req).catch(() => ({}))
-      .then(body => beginDevelopment(taskId, body, session.username))
+      .then(body => beginDevelopment(taskId, body, principal.username))
       .then(task => sendJson(res, 200, { task }))
       .catch(err => sendJson(res, 400, { error: err.message }));
   }
