@@ -1,0 +1,11 @@
+{
+  "name": "myxxit-ops-dashboard",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "start": "PORT=${PORT:-4311} HOST=${HOST:-0.0.0.0} node server.mjs"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.99.2"
+  }
+}

@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Myxxit Ops HQ — Team Roster Preview</title>
+  <link rel="stylesheet" href="./styles.css" />
+  <style>
+    body { background: #0a1020; color: #eef2ff; }
+    .preview-shell { max-width: 1280px; margin: 0 auto; padding: 32px 20px 60px; }
+    .preview-grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
+    .preview-note { margin-top: 18px; color: #aab4d6; }
+  </style>
+</head>
+<body>
+  <div class="preview-shell">
+    <div class="card" style="margin-bottom: 18px;">
+      <div class="section-title">
+        <div>
+          <div class="hero-kicker">Myxxit Dev Ops HQ</div>
+          <h1>Team roster preview</h1>
+          <div class="muted small">Role-based lanes, model defaults, and chat posting behavior.</div>
+        </div>
+        <span class="badge accent">9 visible seats</span>
+      </div>
+      <div class="preview-note small">This is a local preview of the updated roster protocol while live deploy access is being restored.</div>
+    </div>
+
+    <div class="roster-block">
+      <div class="roster-heading">
+        <strong>Active lanes</strong>
+        <span class="muted small">Who Travis is actually working with</span>
+      </div>
+      <div class="preview-grid">
+
+        <div class="role-card role-active">
+          <div class="role-head">
+            <div><div class="role-name">Travis</div><div class="muted small">Founder / Owner</div></div>
+            <div class="role-pills"><span class="badge accent">Leadership lane</span><span class="badge good">Active</span></div>
+          </div>
+          <div class="role-section"><div class="muted small">Primary responsibility</div><p>Final approvals, product vision, business direction.</p></div>
+          <div class="role-matrix">
+            <div class="role-matrix-row"><span class="muted small">Posting mode</span><span>normal</span></div>
+            <div class="role-matrix-row"><span class="muted small">Approval</span><span>Final approver</span></div>
+          </div>
+          <div class="role-notes muted small">Should not be dragged into routine decomposition or implementation wrangling.</div>
+        </div>
+
+        <div class="role-card role-active">
+          <div class="role-head">
+            <div><div class="role-name">Selym</div><div class="muted small">CTO / GM / Orchestrator</div></div>
+            <div class="role-pills"><span class="badge accent">Leadership lane</span><span class="badge good">Active</span></div>
+          </div>
+          <div class="role-section"><div class="muted small">Primary responsibility</div><p>Routes work, reviews output, keeps the main chat readable, and escalates real decisions.</p></div>
+          <div class="role-matrix">
+            <div class="role-matrix-row"><span class="muted small">Default model</span><span>anthropic/claude-haiku-4-5</span></div>
+            <div class="role-matrix-row"><span class="muted small">Review model</span><span>openai/gpt-5.4</span></div>
+            <div class="role-matrix-row"><span class="muted small">Posting mode</span><span>normal</span></div>
+            <div class="role-matrix-row"><span class="muted small">Update format</span><span>[Lane] STATUS · model | Task / What happened / Risk / Next</span></div>
+          </div>
+          <div class="role-notes muted small">Your main point of contact. Less theater, more control plane.</div>
+        </div>
+
+        <div class="role-card role-active">
+          <div class="role-head">
+            <div><div class="role-name">Product Analyst Bot</div><div class="muted small">Analyst / BA</div></div>
+            <div class="role-pills"><span class="badge accent">Core lane</span><span class="badge good">Active</span></div>
+          </div>
+          <div class="role-section"><div class="muted small">Primary responsibility</div><p>Breaks big requests into tasks, dependencies, and acceptance criteria so dev work stops being mush.</p></div>
+          <div class="role-matrix">
+            <div class="role-matrix-row"><span class="muted small">Default model</span><span>google/gemini-2.5-flash</span></div>
+            <div class="role-matrix-row"><span class="muted small">Fallback model</span><span>openai/gpt-5.4</span></div>
+            <div class="role-matrix-row"><span class="muted small">Posting mode</span><span>important-only</span></div>
+          </div>
+        </div>
+
+        <div class="role-card role-active">
+          <div class="role-head">
+            <div><div class="role-name">Research Bot</div><div class="muted small">Research / Comparison</div></div>
+            <div class="role-pills"><span class="badge accent">Core lane</span><span class="badge good">Active</span></div>
+          </div>
+          <div class="role-section"><div class="muted small">Primary responsibility</div><p>Competitor scans, external validation, precedent checks, and cheap broad intelligence work.</p></div>
+          <div class="role-matrix">
+            <div class="role-matrix-row"><span class="muted small">Default model</span><span>google/gemini-2.5-flash</span></div>
+            <div class="role-matrix-row"><span class="muted small">Review model</span><span>google/gemini-2.5-pro</span></div>
+            <div class="role-matrix-row"><span class="muted small">Posting mode</span><span>important-only</span></div>
+          </div>
+        </div>
+
+        <div class="role-card role-active">
+          <div class="role-head">
+            <div><div class="role-name">Core App Developer Bot</div><div class="muted small">Fullstack Implementation</div></div>
+            <div class="role-pills"><span class="badge accent">Core lane</span><span class="badge good">Active</span></div>
+          </div>
+          <div class="role-section"><div class="muted small">Primary responsibility</div><p>Code changes, refactors, implementation passes, and narrow debugging inside the app.</p></div>
+          <div class="role-matrix">
+            <div class="role-matrix-row"><span class="muted small">Default model</span><span>openai/gpt-5.1-codex</span></div>
+            <div class="role-matrix-row"><span class="muted small">Fallback model</span><span>ollama/deepseek-coder</span></div>
+            <div class="role-matrix-row"><span class="muted small">Review model</span><span>openai/gpt-5.4</span></div>
+            <div class="role-matrix-row"><span class="muted small">Posting mode</span><span>normal</span></div>
+          </div>
+        </div>
+
+        <div class="role-card role-active">
+          <div class="role-head">
+            <div><div class="role-name">QA / Validation Bot</div><div class="muted small">Tester / Verifier</div></div>
+            <div class="role-pills"><span class="badge accent">Core lane</span><span class="badge good">Active</span></div>
+          </div>
+          <div class="role-section"><div class="muted small">Primary responsibility</div><p>Checks scenarios, validation, regression risk, and whether the code is lying to us again.</p></div>
+          <div class="role-matrix">
+            <div class="role-matrix-row"><span class="muted small">Default model</span><span>anthropic/claude-sonnet-4-6</span></div>
+            <div class="role-matrix-row"><span class="muted small">Fallback model</span><span>google/gemini-2.5-flash</span></div>
+            <div class="role-matrix-row"><span class="muted small">Review model</span><span>openai/gpt-5.4</span></div>
+            <div class="role-matrix-row"><span class="muted small">Posting mode</span><span>important-only</span></div>
+          </div>
+        </div>
+
+        <div class="role-card role-active">
+          <div class="role-head">
+            <div><div class="role-name">DevOps / Platform Bot</div><div class="muted small">Infra / Deployment</div></div>
+            <div class="role-pills"><span class="badge accent">Core lane</span><span class="badge good">Active</span></div>
+          </div>
+          <div class="role-section"><div class="muted small">Primary responsibility</div><p>Deploy path, scripts, environment setup, uptime, and keeping the ops layer from becoming a clown car.</p></div>
+          <div class="role-matrix">
+            <div class="role-matrix-row"><span class="muted small">Default model</span><span>openai/gpt-5.1-codex</span></div>
+            <div class="role-matrix-row"><span class="muted small">Review model</span><span>openai/gpt-5.4</span></div>
+            <div class="role-matrix-row"><span class="muted small">Posting mode</span><span>normal</span></div>
+          </div>
+        </div>
+
+        <div class="role-card role-active">
+          <div class="role-head">
+            <div><div class="role-name">Dashboard / Internal Tools Bot</div><div class="muted small">Internal Product Maintainer</div></div>
+            <div class="role-pills"><span class="badge accent">Core lane</span><span class="badge good">Active</span></div>
+          </div>
+          <div class="role-section"><div class="muted small">Primary responsibility</div><p>Dev Ops HQ UX, approval controls, workflow surfaces, and progress visibility.</p></div>
+          <div class="role-matrix">
+            <div class="role-matrix-row"><span class="muted small">Default model</span><span>openai/gpt-5.1-codex</span></div>
+            <div class="role-matrix-row"><span class="muted small">Review model</span><span>openai/gpt-5.4</span></div>
+            <div class="role-matrix-row"><span class="muted small">Posting mode</span><span>important-only</span></div>
+          </div>
+        </div>
+
+        <div class="role-card role-standby">
+          <div class="role-head">
+            <div><div class="role-name">Auth / Security Bot</div><div class="muted small">Security Specialist</div></div>
+            <div class="role-pills"><span class="badge accent">Specialist lane</span><span class="badge warn">Standby</span></div>
+          </div>
+          <div class="role-section"><div class="muted small">Primary responsibility</div><p>Auth, permissions, RLS, impersonation, and other ways software quietly ruins your day.</p></div>
+          <div class="role-matrix">
+            <div class="role-matrix-row"><span class="muted small">Default model</span><span>google/gemini-2.5-pro</span></div>
+            <div class="role-matrix-row"><span class="muted small">Review model</span><span>openai/gpt-5.4</span></div>
+            <div class="role-matrix-row"><span class="muted small">Posting mode</span><span>important-only</span></div>
+          </div>
+        </div>
+
+        <div class="role-card role-standby">
+          <div class="role-head">
+            <div><div class="role-name">Payments / Tickets Bot</div><div class="muted small">Commerce Specialist</div></div>
+            <div class="role-pills"><span class="badge accent">Specialist lane</span><span class="badge warn">Standby</span></div>
+          </div>
+          <div class="role-section"><div class="muted small">Primary responsibility</div><p>Payment flows, ticket tiers, entitlements, and webhook correctness.</p></div>
+          <div class="role-matrix">
+            <div class="role-matrix-row"><span class="muted small">Default model</span><span>openai/gpt-5.1-codex</span></div>
+            <div class="role-matrix-row"><span class="muted small">Review model</span><span>openai/gpt-5.4</span></div>
+            <div class="role-matrix-row"><span class="muted small">Posting mode</span><span>important-only</span></div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</body>
+</html>
