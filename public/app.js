@@ -415,7 +415,6 @@ function renderWorkSection(message = '') {
           </div>
           <div class="hero-actions">
             <span class="badge accent">signed in as ${esc(session.username || 'travis')}</span>
-            <button class="secondary" id="passwordBtn">Change password</button>
             <button class="ghost" id="logoutBtn">Logout</button>
           </div>
         </div>
@@ -594,10 +593,7 @@ function mountWorkHandlers() {
       renderLogin();
     };
   }
-  const passwordBtn = document.getElementById('passwordBtn');
-  if (passwordBtn) {
-    passwordBtn.onclick = renderPasswordForm;
-  }
+
   const form = document.getElementById('taskForm');
   if (form) {
     form.onsubmit = saveTask;
