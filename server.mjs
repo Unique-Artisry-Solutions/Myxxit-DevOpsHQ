@@ -419,11 +419,11 @@ function routeApi(req, res) {
   }
 
   if (req.method === 'GET' && url.pathname === '/api/session') {
-    const session = getSession(req);
-    const auth = readJson(authPath, null);
+    const principal = getPrincipal(req);
+    const auth = getAuth();
     return sendJson(res, 200, {
-      authenticated: !!session,
-      username: session?.username || null,
+      authenticated: !!principal,
+      username: principal?.username || null,
       mustChangePassword: !!auth?.mustChangePassword,
     });
   }
