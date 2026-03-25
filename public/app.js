@@ -493,25 +493,46 @@ function renderWorkSection(message = '') {
             <div class="row">
               <div>
                 <label>Branch</label>
-                <input name="branch" value="${esc(current?.branch || '')}" placeholder="dev/example-task" />
-              </div>
-              <div>
-                <label>Owner</label>
-                <input name="owner" value="${esc(current?.owner || 'Selym')}" />
-              </div>
-              <div>
-                <label>Progress (%)</label>
-                <input name="progress" type="number" min="0" max="100" value="${esc(normalizeProgress(current?.progress ?? 0))}" />
-              </div>
-            </div>
+<input name="branch" value="${esc(current?.branch || '')}" placeholder="hq/example-task or app/example-task" />
+</div>
+<div>
+<label>Target repo</label>
+<select name="target_repo" required>
+<option value="">Select repo</option>
+${['the-drinx-app','Myxxit-DevOpsHQ'].map(v => `<option value="${v}" ${current?.targetRepo===v?'selected':''}>${v}</option>`).join('')}
+</select>
+</div>
+<div>
+<label>Owner</label>
+<input name="owner" value="${esc(current?.owner || 'Selym')}" />
+</div>
+<div>
+<label>Progress (%)</label>
+<input name="progress" type="number" min="0" max="100" value="${esc(normalizeProgress(current?.progress ?? 0))}" />
+</div>
+</div>
 
-            <div>
-              <label>Model</label>
-              <input name="model" value="${esc(current?.model || '')}" placeholder="openai/gpt-5.1-codex" />
-            </div>
+<div class="row">
+<div>
+<label>Group</label>
+<select name="task_group">
+${['general','autonomous-workflow','platform','security','cleanup'].map(v => `<option value="${v}" ${current?.taskGroup===v?'selected':''}>${titleCase(v)}</option>`).join('')}
+</select>
+</div>
+<div>
+<label>Model</label>
+<input name="model" value="${esc(current?.model || '')}" placeholder="openai/gpt-5.1-codex" />
+</div>
+</div>
 
-            <div>
-              <label>Summary</label>
+<div>
+<label>Allowed paths</label>
+<input name="allowed_paths" value="${esc(Array.isArray(current?.allowedPaths) ? current.allowedPaths.join(', ') : (current?.allowedPaths || ''))}" placeholder="ops-dashboard-deploy/, ops-dashboard/, vercel-webhook-function/" required />
+<div class="muted small">Comma-separated paths. Tasks cannot move in-progress without a declared repo and allowed path scope.</div>
+</div>
+
+<div>
+<label>Summary</label>
               <textarea name="summary" placeholder="What changed or what is being proposed?">${esc(current?.summary || '')}</textarea>
             </div>
 

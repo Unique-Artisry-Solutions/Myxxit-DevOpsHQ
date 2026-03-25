@@ -160,52 +160,74 @@ function readBody(req) {
     req.on('error', reject);
   });
 }
-
 function sanitizeTask(input = {}) {
-  const clampProgress = (value) => {
-    if (value === '' || value === null || value === undefined) return 0;
-    const num = Number(value);
-    if (Number.isNaN(num)) return 0;
-    return Math.max(0, Math.min(100, Math.round(num)));
-  };
-  return {
-    title: String(input.title || '').trim(),
-    type: String(input.type || 'task').trim() || 'task',
-    status: String(input.status || 'proposed').trim() || 'proposed',
-    risk: String(input.risk || 'low').trim() || 'low',
-    branch: String(input.branch || '').trim(),
-    owner: String(input.owner || 'Selym').trim() || 'Selym',
-    model: String(input.model || '').trim(),
-    summary: String(input.summary || '').trim(),
-    recommendation: String(input.recommendation || '').trim(),
-    approval: String(input.approval || 'pending').trim() || 'pending',
-    notes: String(input.notes || '').trim(),
-    progress: clampProgress(input.progress),
-  };
+const clampProgress = (value) => {
+if (value === '' || value === null || value === undefined) return 0;
+const num = Number(value);
+if (Number.isNaN(num)) return 0;
+return Math.max(0, Math.min(100, Math.round(num)));
+};
+const targetRepo = String(input.target_repo || input.targetRepo || '').trim();
+const allowedPathsRaw = input.allowed_paths || input.allowedPaths || '';
+const allowedPaths = Array.isArray(allowedPathsRaw)
+? allowedPathsRaw.map(v => String(v || '').trim()).filter(Boolean)
+: String(allowedPathsRaw).split(',').map(v => v.trim()).filter(Boolean);
+const branch = String(input.branch || '').trim();
+const status = String(input.status || 'proposed').trim() || 'proposed';
+
+if (!targetRepo) throw new Error('Target repo is required.');
+if (!['the-drinx-app', 'Myxxit-DevOpsHQ'].includes(targetRepo)) {
+throw new Error('Target repo must be either the-drinx-app or Myxxit-DevOpsHQ.');
+}
+if (!allowedPaths.length) throw new Error('Allowed paths are required.');
+if (targetRepo === 'the-drinx-app' && branch && !branch.startsWith('app/')) {
+throw new Error('Main app branches must use the app/ prefix.');
+}
+if (targetRepo === 'Myxxit-DevOpsHQ' && branch && !branch.startsWith('hq/')) {
+throw new Error('DevOps HQ branches must use the hq/ prefix.');
 }
 
+return {
+title: String(input.title || '').trim(),
+type: String(input.type || 'task').trim() || 'task',
+status,
+risk: String(input.risk || 'low').trim() || 'low',
+branch,
+target_repo: targetRepo,
+allowed_paths: allowedPaths,
+owner: String(input.owner || 'Selym').trim() || 'Selym',
+model: String(input.model || '').trim(),
+summary: String(input.summary || '').trim(),
+recommendation: String(input.recommendation || '').trim(),
+approval: String(input.approval || 'pending').trim() || 'pending',
+notes: String(input.notes || '').trim(),
+progress: clampProgress(input.progress),
+};
+}
 function mapTaskRow(row = {}, events = []) {
-  const createdAt = row.created_at || row.createdAt || row.createdat || null;
-  const updatedAt = row.updated_at || row.updatedAt || row.updatedat || createdAt || null;
-  const progressValue = Number(row.progress);
-  return {
-    id: row.id,
-    title: row.title || '',
-    type: row.type || 'task',
-    status: row.status || 'proposed',
-    risk: row.risk || 'low',
-    branch: row.branch || '',
-    owner: row.owner || 'Selym',
-    model: row.model || '',
-    summary: row.summary || '',
-    recommendation: row.recommendation || '',
-    approval: row.approval || 'pending',
-    notes: row.notes || '',
-    progress: Number.isFinite(progressValue) ? Math.max(0, Math.min(100, Math.round(progressValue))) : 0,
-    createdAt,
-    updatedAt: updatedAt || createdAt,
-    events,
-  };
+const createdAt = row.created_at || row.createdAt || row.createdat || null;
+const updatedAt = row.updated_at || row.updatedAt || row.updatedat || createdAt || null;
+const progressValue = Number(row.progress);
+return {
+id: row.id,
+title: row.title || '',
+type: row.type || 'task',
+status: row.status || 'proposed',
+risk: row.risk || 'low',
+branch: row.branch || '',
+targetRepo: row.target_repo || row.targetRepo || '',
+allowedPaths: row.allowed_paths || row.allowedPaths || [],
+owner: row.owner || 'Selym',
+model: row.model || '',
+summary: row.summary || '',
+recommendation: row.recommendation || '',
+approval: row.approval || 'pending',
+notes: row.notes || '',
+progress: Number.isFinite(progressValue) ? Math.max(0, Math.min(100, Math.round(progressValue))) : 0,
+createdAt,
+updatedAt: updatedAt || createdAt,
+events,
+};
 }
 
 function mapEventRow(row = {}) {
