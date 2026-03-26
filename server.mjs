@@ -339,13 +339,17 @@ async function recordTaskEvent(taskId, { type = 'progress', detail = '', metadat
 const cleanDetail = String(detail || '').trim();
 if (!taskId || !cleanDetail) return null;
 
-let payload = {
+const payload = {
 task_id: taskId,
 event_type: type,
-detail: cleanDetail,
 description: cleanDetail,
 metadata,
 };
+
+const { data, error } = await supabase.from('task_events').insert(payload).select().single();
+if (error) throw new Error(`Failed to record task event: ${error.message}`);
+return mapEventRow(data);
+}
 
 let { data, error } = await supabase.from('task_events').insert(payload).select().single();
 
