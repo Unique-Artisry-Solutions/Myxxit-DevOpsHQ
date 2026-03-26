@@ -336,29 +336,41 @@ async function getTaskRecord(taskId) {
 }
 
 async function recordTaskEvent(taskId, { type = 'progress', detail = '', metadata = null } = {}) {
-  if (!taskId || !detail.trim()) return null;
-  const payload = {
-    task_id: taskId,
-    event_type: type,
-    detail: detail.trim(),
-    metadata,
-  };
-  const { data, error } = await supabase.from('task_events').insert(payload).select().single();
-  if (error) throw new Error(`Failed to record task event: ${error.message}`);
-  return mapEventRow(data);
+const cleanDetail = String(detail || '').trim();
+if (!taskId || !cleanDetail) return null;
+
+let payload = {
+task_id: taskId,
+event_type: type,
+detail: cleanDetail,
+description: cleanDetail,
+metadata,
+};
+
+let { data, error } = await supabase.from('task_events').insert(payload).select().single();
+
+if (error && /Could not find the 'detail' column/i.test(error.message || '')) {
+payload = {
+task_id: taskId,
+event_type: type,
+description: cleanDetail,
+metadata,
+};
+({ data, error } = await supabase.from('task_events').insert(payload).select().single());
 }
 
-async function transitionTask(taskId, patch, actor, detail, type = 'status-change') {
-  if (!taskId) throw new Error('Task ID is required.');
-  const { data, error } = await supabase.from('tasks').update(patch).eq('id', taskId).select().single();
-  if (error) throw new Error(`Failed to update task: ${error.message}`);
-  const task = mapTaskRow(data);
-  await recordTaskEvent(task.id, {
-    type,
-    detail,
-    metadata: { actor: actor || 'system', patch },
-  }).catch(() => {});
-  return task;
+if (error && /Could not find the 'description' column/i.test(error.message || '')) {
+payload = {
+task_id: taskId,
+event_type: type,
+detail: cleanDetail,
+metadata,
+};
+({ data, error } = await supabase.from('task_events').insert(payload).select().single());
+}
+
+if (error) throw new Error(`Failed to record task event: ${error.message}`);
+return mapEventRow(data);
 }
 
 async function createManualTaskEvent(taskId, body, actor) {
