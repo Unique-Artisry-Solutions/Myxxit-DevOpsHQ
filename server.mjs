@@ -374,7 +374,6 @@ metadata,
 }
 
 if (error) throw new Error(`Failed to record task event: ${error.message}`);
-return mapEventRow(data);
 }
 
 async function createManualTaskEvent(taskId, body, actor) {
