@@ -336,21 +336,28 @@ return mapTaskRow(data);
 }
 
 async function recordTaskEvent(taskId, { type = 'progress', detail = '', metadata = null } = {}) {
-const cleanDetail = String(detail || '').trim();
-if (!taskId || !cleanDetail) return null;
+  const cleanDetail = String(detail || '').trim();
+  if (!taskId || !cleanDetail) return null;
 
-const payload = {
-task_id: taskId,
-event_type: type,
-description: cleanDetail,
-metadata,
-};
+  const actor =
+    metadata && typeof metadata === 'object' && metadata.actor
+      ? String(metadata.actor)
+      : 'system';
 
-const { data, error } = await supabase.from('task_events').insert(payload).select().single();
-if (error) throw new Error(`Failed to record task event: ${error.message}`);
-return mapEventRow(data);
+  const payload = {
+    task_id: taskId,
+    event_type: type,
+    actor,
+    details: {
+      detail: cleanDetail,
+      ...(metadata && typeof metadata === 'object' ? metadata : {}),
+    },
+  };
+
+  const { data, error } = await supabase.from('task_events').insert(payload).select().single();
+  if (error) throw new Error(`Failed to record task event: ${error.message}`);
+  return mapEventRow(data);
 }
-
 async function createManualTaskEvent(taskId, body, actor) {
 if (!taskId) throw new Error('Task ID is required.');
 const detail = String(body.detail || body.description || '').trim();
