@@ -296,43 +296,43 @@ async function fetchRosterEntries() {
 }
 
 async function createTaskRecord(input, actor) {
-  const sanitized = sanitizeTask(input);
-  if (!sanitized.title) throw new Error('Title is required.');
-  const insertPayload = { ...sanitized };
-  const { data, error } = await supabase.from('tasks').insert(insertPayload).select().single();
-  if (error) throw new Error(`Failed to create task: ${error.message}`);
-  const task = mapTaskRow(data);
-  await recordTaskEvent(task.id, {
-    type: 'created',
-    detail: `${actor || 'system'} created this task.`,
-    metadata: { actor: actor || 'system' },
-  }).catch(() => {});
-  return task;
+const sanitized = sanitizeTask(input);
+if (!sanitized.title) throw new Error('Title is required.');
+const insertPayload = { ...sanitized };
+const { data, error } = await supabase.from('tasks').insert(insertPayload).select().single();
+if (error) throw new Error(`Failed to create task: ${error.message}`);
+const task = mapTaskRow(data);
+await recordTaskEvent(task.id, {
+type: 'created',
+detail: `${actor || 'system'} created this task.`,
+metadata: { actor: actor || 'system' },
+}).catch(() => {});
+return task;
 }
 
 async function updateTaskRecord(taskId, input, actor) {
-  const sanitized = sanitizeTask(input);
-  if (!sanitized.title) throw new Error('Title is required.');
-  const { data, error } = await supabase.from('tasks').update(sanitized).eq('id', taskId).select().single();
-  if (error) throw new Error(`Failed to update task: ${error.message}`);
-  const task = mapTaskRow(data);
-  await recordTaskEvent(task.id, {
-    type: 'updated',
-    detail: `${actor || 'system'} updated the task.`,
-    metadata: { actor: actor || 'system' },
-  }).catch(() => {});
-  return task;
+const sanitized = sanitizeTask(input);
+if (!sanitized.title) throw new Error('Title is required.');
+const { data, error } = await supabase.from('tasks').update(sanitized).eq('id', taskId).select().single();
+if (error) throw new Error(`Failed to update task: ${error.message}`);
+const task = mapTaskRow(data);
+await recordTaskEvent(task.id, {
+type: 'updated',
+detail: `${actor || 'system'} updated the task.`,
+metadata: { actor: actor || 'system' },
+}).catch(() => {});
+return task;
 }
 
 async function deleteTaskRecord(taskId) {
-  const { error } = await supabase.from('tasks').delete().eq('id', taskId);
-  if (error) throw new Error(`Failed to delete task: ${error.message}`);
+const { error } = await supabase.from('tasks').delete().eq('id', taskId);
+if (error) throw new Error(`Failed to delete task: ${error.message}`);
 }
 
 async function getTaskRecord(taskId) {
-  const { data, error } = await supabase.from('tasks').select('*').eq('id', taskId).single();
-  if (error) throw new Error(`Failed to load task: ${error.message}`);
-  return mapTaskRow(data);
+const { data, error } = await supabase.from('tasks').select('*').eq('id', taskId).single();
+if (error) throw new Error(`Failed to load task: ${error.message}`);
+return mapTaskRow(data);
 }
 
 async function recordTaskEvent(taskId, { type = 'progress', detail = '', metadata = null } = {}) {
@@ -351,41 +351,16 @@ if (error) throw new Error(`Failed to record task event: ${error.message}`);
 return mapEventRow(data);
 }
 
-let { data, error } = await supabase.from('task_events').insert(payload).select().single();
-
-if (error && /Could not find the 'detail' column/i.test(error.message || '')) {
-payload = {
-task_id: taskId,
-event_type: type,
-description: cleanDetail,
-metadata,
-};
-({ data, error } = await supabase.from('task_events').insert(payload).select().single());
-}
-
-if (error && /Could not find the 'description' column/i.test(error.message || '')) {
-payload = {
-task_id: taskId,
-event_type: type,
-detail: cleanDetail,
-metadata,
-};
-({ data, error } = await supabase.from('task_events').insert(payload).select().single());
-}
-
-if (error) throw new Error(`Failed to record task event: ${error.message}`);
-}
-
 async function createManualTaskEvent(taskId, body, actor) {
-  if (!taskId) throw new Error('Task ID is required.');
-  const detail = String(body.detail || body.description || '').trim();
-  const type = String(body.type || 'progress').trim() || 'progress';
-  if (!detail) throw new Error('Detail is required.');
-  return recordTaskEvent(taskId, {
-    type,
-    detail,
-    metadata: { actor: actor || 'system' },
-  });
+if (!taskId) throw new Error('Task ID is required.');
+const detail = String(body.detail || body.description || '').trim();
+const type = String(body.type || 'progress').trim() || 'progress';
+if (!detail) throw new Error('Detail is required.');
+return recordTaskEvent(taskId, {
+type,
+detail,
+metadata: { actor: actor || 'system' },
+});
 }
 
 async function approveTask(taskId, body, actor) {
