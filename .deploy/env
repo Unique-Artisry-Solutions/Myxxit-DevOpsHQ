@@ -1,0 +1,18 @@
+# === CANONICAL PRODUCTION ENV (for reference, NOT for Render deploy) ===
+# These should be set via Render's environment panel in production.
+SUPABASE_URL="https://your-project.supabase.co"
+SUPABASE_SERVICE_ROLE_KEY="your-service-role-key"
+SUPABASE_ANON_KEY="your-anon-key"
+
+MYXXIT_DASHBOARD_USERNAME="travis"
+MYXXIT_DASHBOARD_PASSWORD="replace-with-strong-secret"
+
+DATA_DIR="/opt/myxxit-ops-dashboard/data"
+HOST_PORT="4311"
+PORT="4311"
+# Traefik/local-only settings REMOVED or COMMENTED OUT:
+# TRAEFIK_HOST=
+# TRAEFIK_ROUTER_NAME=
+# TRAEFIK_ENTRYPOINT=
+# TRAEFIK_RESOLVER=
+# HEALTHCHECK_URL="http://127.0.0.1:4311/healthz"
