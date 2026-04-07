@@ -109,24 +109,47 @@ function pbkdf2(password, saltHex) {
   return crypto.pbkdf2Sync(password, Buffer.from(saltHex, 'hex'), 120000, 32, 'sha256').toString('hex');
 }
 
+/**
+ * Authenticate request via API Key (Bearer token) or session cookie
+ * 
+ * API Key Authentication:
+ *   - Header: Authorization: Bearer <API_KEY>
+ *   - Environment: API_KEY (secure, set via deployment)
+ *   - Usage: curl -H "Authorization: Bearer your-api-key" https://hq.myxxit.dev/api/tasks
+ *   - Principal: { username: 'Selym-API', source: 'apiKey' }
+ * 
+ * Session Authentication (fallback):
+ *   - Cookie: session=<token>
+ *   - TTL: 12 hours
+ *   - Usage: POST /api/login with credentials
+ * 
+ * Priority: API Key > Session Cookie
+ */
 function getPrincipal(req) {
-  // 1. Check for API Key
+  // 1. Check for API Key via Bearer token
   const authHeader = req.headers.authorization || '';
   const tokenMatch = authHeader.match(/^Bearer\s+(.+)$/);
   const apiKey = process.env.API_KEY;
+  
   if (apiKey && tokenMatch && tokenMatch[1] === apiKey) {
+    // API key is valid, return API principal
     return { username: 'Selym-API', source: 'apiKey' };
   }
 
-  // 2. Fallback to session cookie
+  // 2. Fallback to session cookie authentication
   const token = parseCookies(req).session;
   if (!token) return null;
+  
   const session = sessions.get(token);
   if (!session) return null;
+  
+  // Check session expiration
   if (Date.now() > session.expiresAt) {
     sessions.delete(token);
     return null;
   }
+  
+  // Refresh session TTL
   session.expiresAt = Date.now() + SESSION_TTL_MS;
   return { ...session, source: 'session' };
 }
