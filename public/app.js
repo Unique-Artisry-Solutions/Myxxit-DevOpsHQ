@@ -442,7 +442,6 @@ function renderWorkSection(message = '') {
           </div>
         </div>
 
-        ${session.mustChangePassword ? '<div class="notice">Security note: change the temporary password now.</div>' : ''}
         ${message ? `<div class="notice">${esc(message)}</div>` : ''}
       </div>
 
@@ -628,42 +627,7 @@ function mountWorkHandlers() {
   }
 }
 
-function renderPasswordForm(message = '', error = '') {
-  app.innerHTML = `
-    <div class="auth-shell">
-      <div class="card auth-card">
-        <div class="hero-kicker">Security</div>
-        <h1>Change dashboard password</h1>
-        <p class="subtitle">Set a new password for the private dashboard. Minimum 12 characters. Make it one you’ll remember without making it idiot bait.</p>
-        ${message ? `<div class="notice">${esc(message)}</div>` : ''}
-        ${error ? `<div class="notice">${esc(error)}</div>` : ''}
-        <form id="passwordForm" class="grid" style="margin-top:18px;">
-          <div><label>Current password</label><input name="currentPassword" type="password" required /></div>
-          <div><label>New password</label><input name="newPassword" type="password" minlength="12" required /></div>
-          <div class="actions">
-            <button type="submit">Update password</button>
-            <button type="button" class="ghost" id="backBtn">Back</button>
-          </div>
-        </form>
-      </div>
-    </div>`;
 
-  document.getElementById('backBtn').onclick = () => renderDashboard();
-  document.getElementById('passwordForm').onsubmit = async (e) => {
-    e.preventDefault();
-    const form = new FormData(e.target);
-    try {
-      await api('/api/change-password', {
-        method: 'POST',
-        body: JSON.stringify(Object.fromEntries(form.entries())),
-      });
-      session.mustChangePassword = false;
-      renderDashboard('Password updated successfully.');
-    } catch (err) {
-      renderPasswordForm('', err.message);
-    }
-  };
-}
 
 async function saveTask(e) {
   e.preventDefault();

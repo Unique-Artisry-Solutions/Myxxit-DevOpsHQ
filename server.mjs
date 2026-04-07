@@ -9,7 +9,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const dataDir = path.resolve(process.env.DATA_DIR || path.join(__dirname, 'data'));
 const publicDir = path.join(__dirname, 'public');
-const authPath = path.join(dataDir, 'auth.json');
+
 const PORT = Number(process.env.PORT || 4311);
 const HOST = process.env.HOST || '0.0.0.0';
 const SESSION_TTL_MS = 1000 * 60 * 60 * 12;
@@ -37,28 +37,16 @@ function performSupabaseHealthCheck() {
       if (error) throw error;
       return {
         supabase: 'ok',
-        auth: fs.existsSync(authPath) ? 'present' : 'missing',
+        authSource: 'environment-variables-only',
         timestamp: new Date().toISOString(),
         uptimeSeconds: Math.round(process.uptime()),
       };
     });
 }
 
-function readJson(filePath, fallback) {
-  try {
-    return JSON.parse(fs.readFileSync(filePath, 'utf8'));
-  } catch {
-    return fallback;
-  }
-}
 
-function writeJson(filePath, value) {
-  fs.writeFileSync(filePath, JSON.stringify(value, null, 2));
-}
 
 function getAuth() {
-  const fileAuth = readJson(authPath, null);
-  if (fileAuth) return { ...fileAuth, source: 'file' };
   const envUser = process.env.AUTH_USERNAME;
   const envSalt = process.env.AUTH_SALT;
   const envHash = process.env.AUTH_PASSWORD_HASH;
@@ -67,7 +55,6 @@ function getAuth() {
       username: envUser,
       salt: envSalt,
       passwordHash: envHash,
-      mustChangePassword: true,
       source: 'env',
     };
   }
@@ -423,7 +410,7 @@ function routeApi(req, res) {
       }
       const token = crypto.randomBytes(24).toString('hex');
       sessions.set(token, { username: auth.username, expiresAt: Date.now() + SESSION_TTL_MS });
-      sendJson(res, 200, { ok: true, username: auth.username, mustChangePassword: !!auth.mustChangePassword }, {
+      sendJson(res, 200, { ok: true, username: auth.username }, {
         'Set-Cookie': `session=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${SESSION_TTL_MS / 1000}`,
       });
     }).catch(err => sendJson(res, 400, { error: err.message }));
@@ -439,36 +426,13 @@ function routeApi(req, res) {
 
   if (req.method === 'GET' && url.pathname === '/api/session') {
     const principal = getPrincipal(req);
-    const auth = getAuth();
     return sendJson(res, 200, {
       authenticated: !!principal,
       username: principal?.username || null,
-      mustChangePassword: !!auth?.mustChangePassword,
     });
   }
 
-  if (req.method === 'POST' && url.pathname === '/api/change-password') {
-    const principal = requireAuth(req, res);
-    if (!principal) return;
-    return readBody(req).then(body => {
-      const currentPassword = String(body.currentPassword || '');
-      const newPassword = String(body.newPassword || '');
-      if (newPassword.length < 12) {
-        return sendJson(res, 400, { error: 'New password must be at least 12 characters.' });
-      }
-      const auth = getAuth();
-      if (pbkdf2(currentPassword, auth.salt) !== auth.passwordHash) {
-        return sendJson(res, 401, { error: 'Current password is incorrect.' });
-      }
-      const salt = crypto.randomBytes(16).toString('hex');
-      auth.salt = salt;
-      auth.passwordHash = pbkdf2(newPassword, salt);
-      auth.mustChangePassword = false;
-      auth.updatedAt = new Date().toISOString();
-      writeJson(authPath, auth);
-      return sendJson(res, 200, { ok: true });
-    }).catch(err => sendJson(res, 400, { error: err.message }));
-  }
+
 
   if (req.method === 'GET' && url.pathname === '/api/roster') {
     const principal = requireAuth(req, res);
