@@ -7,6 +7,13 @@ let editingId = null;
 let currentView = 'work';
 let pendingNotice = '';
 
+// Search, filter, and sort state
+let searchQuery = '';
+let filterStatus = '';
+let filterRisk = '';
+let filterOwner = '';
+let sortBy = 'updated';
+
 async function api(path, options = {}) {
   const res = await fetch(path, {
     credentials: 'include',
@@ -314,6 +321,51 @@ function stats() {
   return { pending, inProgress, completed, highRisk };
 }
 
+function getFilteredAndSortedTasks() {
+  let filtered = tasks.filter(task => {
+    // Search filter: match title, id, owner, or branch
+    if (searchQuery) {
+      const q = searchQuery.toLowerCase();
+      const matchesSearch = 
+        (task.title && task.title.toLowerCase().includes(q)) ||
+        (task.id && task.id.toLowerCase().includes(q)) ||
+        (task.owner && task.owner.toLowerCase().includes(q)) ||
+        (task.branch && task.branch.toLowerCase().includes(q));
+      if (!matchesSearch) return false;
+    }
+
+    // Status filter
+    if (filterStatus && task.status !== filterStatus) return false;
+
+    // Risk filter
+    if (filterRisk && task.risk !== filterRisk) return false;
+
+    // Owner filter
+    if (filterOwner && task.owner !== filterOwner) return false;
+
+    return true;
+  });
+
+  // Sort
+  filtered.sort((a, b) => {
+    if (sortBy === 'updated') {
+      // Newest first
+      return new Date(b.updatedAt || 0) - new Date(a.updatedAt || 0);
+    } else if (sortBy === 'risk') {
+      // High to low
+      const riskOrder = { high: 3, medium: 2, low: 1 };
+      return (riskOrder[b.risk] || 0) - (riskOrder[a.risk] || 0);
+    } else if (sortBy === 'status') {
+      // Custom order: proposed, approved, in-progress, completed, blocked
+      const statusOrder = { proposed: 1, approved: 2, 'in-progress': 3, completed: 4, blocked: 5 };
+      return (statusOrder[a.status] || 0) - (statusOrder[b.status] || 0);
+    }
+    return 0;
+  });
+
+  return filtered;
+}
+
 function renderLogin(error = '') {
   app.innerHTML = `
     <div class="auth-shell">
@@ -565,8 +617,52 @@ ${['general','autonomous-workflow','platform','security','cleanup'].map(v => `<o
             <span class="badge accent">${tasks.length} items</span>
           </div>
 
+          <div class="task-controls">
+            <div class="control-row">
+              <input 
+                type="text" 
+                id="searchInput" 
+                placeholder="Search by title, ID, owner, or branch..." 
+                value="${esc(searchQuery)}"
+                class="search-box"
+              />
+            </div>
+            <div class="control-row">
+              <select id="filterStatus" class="filter-select">
+                <option value="">All statuses</option>
+                <option value="proposed" ${filterStatus === 'proposed' ? 'selected' : ''}>Proposed</option>
+                <option value="approved" ${filterStatus === 'approved' ? 'selected' : ''}>Approved</option>
+                <option value="in-progress" ${filterStatus === 'in-progress' ? 'selected' : ''}>In Progress</option>
+                <option value="completed" ${filterStatus === 'completed' ? 'selected' : ''}>Completed</option>
+                <option value="blocked" ${filterStatus === 'blocked' ? 'selected' : ''}>Blocked</option>
+              </select>
+              <select id="filterRisk" class="filter-select">
+                <option value="">All risks</option>
+                <option value="low" ${filterRisk === 'low' ? 'selected' : ''}>Low</option>
+                <option value="medium" ${filterRisk === 'medium' ? 'selected' : ''}>Medium</option>
+                <option value="high" ${filterRisk === 'high' ? 'selected' : ''}>High</option>
+              </select>
+              <select id="filterOwner" class="filter-select">
+                <option value="">All owners</option>
+                ${[...new Set(tasks.map(t => t.owner).filter(Boolean))].sort().map(owner => 
+                  `<option value="${esc(owner)}" ${filterOwner === owner ? 'selected' : ''}>${esc(owner)}</option>`
+                ).join('')}
+              </select>
+              <select id="sortBy" class="filter-select">
+                <option value="updated" ${sortBy === 'updated' ? 'selected' : ''}>Updated (newest first)</option>
+                <option value="risk" ${sortBy === 'risk' ? 'selected' : ''}>Risk (high to low)</option>
+                <option value="status" ${sortBy === 'status' ? 'selected' : ''}>Status</option>
+              </select>
+            </div>
+          </div>
+
           <div class="task-list">
-            ${tasks.length ? tasks.map(taskCard).join('') : '<div class="task-empty">No tracked items yet. Add the first real work item and start using this like an ops surface, not a graveyard.</div>'}
+            ${tasks.length > 0 ? (() => {
+              const filtered = getFilteredAndSortedTasks();
+              return filtered.length 
+                ? filtered.map(taskCard).join('') 
+                : '<div class="task-empty">No items match your search or filters.</div>';
+            })() : '<div class="task-empty">No tracked items yet. Add the first real work item and start using this like an ops surface, not a graveyard.</div>'}
           </div>
         </div>
       </div>
@@ -623,6 +719,51 @@ function mountWorkHandlers() {
   if (cancel) {
     cancel.onclick = () => {
       editingId = null;
+      renderDashboard();
+    };
+  }
+
+  // Search input handler
+  const searchInput = document.getElementById('searchInput');
+  if (searchInput) {
+    searchInput.oninput = (e) => {
+      searchQuery = e.target.value;
+      renderDashboard();
+    };
+  }
+
+  // Status filter handler
+  const filterStatusSelect = document.getElementById('filterStatus');
+  if (filterStatusSelect) {
+    filterStatusSelect.onchange = (e) => {
+      filterStatus = e.target.value;
+      renderDashboard();
+    };
+  }
+
+  // Risk filter handler
+  const filterRiskSelect = document.getElementById('filterRisk');
+  if (filterRiskSelect) {
+    filterRiskSelect.onchange = (e) => {
+      filterRisk = e.target.value;
+      renderDashboard();
+    };
+  }
+
+  // Owner filter handler
+  const filterOwnerSelect = document.getElementById('filterOwner');
+  if (filterOwnerSelect) {
+    filterOwnerSelect.onchange = (e) => {
+      filterOwner = e.target.value;
+      renderDashboard();
+    };
+  }
+
+  // Sort handler
+  const sortBySelect = document.getElementById('sortBy');
+  if (sortBySelect) {
+    sortBySelect.onchange = (e) => {
+      sortBy = e.target.value;
       renderDashboard();
     };
   }
