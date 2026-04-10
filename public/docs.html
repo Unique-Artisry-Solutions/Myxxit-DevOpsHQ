@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Myxxit Dev Ops Documentation</title>
+  <link rel="stylesheet" href="/styles.css" />
+  <style>
+    .docs-nav-back {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 24px;
+      color: var(--accent);
+      text-decoration: none;
+      font-size: 14px;
+      transition: opacity 0.2s;
+    }
+    .docs-nav-back:hover {
+      opacity: 0.8;
+    }
+    .docs-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: 24px;
+      margin-top: 32px;
+    }
+    .doc-card {
+      padding: 24px;
+      background: var(--panel-strong);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      transition: all 0.2s;
+    }
+    .doc-card:hover {
+      border-color: var(--accent);
+      box-shadow: 0 8px 24px rgba(124, 140, 255, 0.1);
+    }
+    .doc-card h3 {
+      margin: 0 0 12px 0;
+      font-size: 18px;
+      color: var(--text);
+    }
+    .doc-card p {
+      margin: 0 0 16px 0;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.6;
+    }
+    .doc-links {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .doc-link {
+      padding: 8px 16px;
+      background: var(--accent);
+      color: var(--bg);
+      text-decoration: none;
+      border-radius: 6px;
+      font-size: 14px;
+      font-weight: 500;
+      transition: all 0.2s;
+      display: inline-block;
+    }
+    .doc-link:hover {
+      opacity: 0.8;
+      transform: translateY(-2px);
+    }
+    .doc-link.secondary {
+      background: var(--panel);
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+    .doc-link.secondary:hover {
+      border-color: var(--accent);
+    }
+  </style>
+</head>
+<body>
+  <header class="nav-shell">
+    <div class="container nav-bar">
+      <div>
+        <div class="brand-label">Myxxit Dev Ops HQ</div>
+        <div class="muted small">Documentation</div>
+      </div>
+      <div class="nav-tabs">
+        <a href="/" class="nav-tab">← Back to Dashboard</a>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <div class="container">
+      <a href="/" class="docs-nav-back">← Back to dashboard</a>
+      
+      <div>
+        <div class="hero-kicker">Reference materials</div>
+        <h1>Documentation</h1>
+        <p class="subtitle">Technical documentation, architecture guides, and implementation references for Myxxit Dev Ops infrastructure and operations.</p>
+      </div>
+
+      <div class="docs-grid" id="docs-container">
+        <div style="padding: 2rem; text-align: center; grid-column: 1 / -1;">
+          <div class="muted small">Loading documents...</div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <script>
+    async function loadDocs() {
+      const container = document.getElementById('docs-container');
+      try {
+        const response = await fetch('/api/docs', {
+          credentials: 'include',
+        });
+        const data = await response.json();
+        
+        if (!response.ok) {
+          container.innerHTML = `<div style="grid-column: 1 / -1; padding: 2rem; text-align: center;" class="notice">Error loading documents: ${data.error || 'Unknown error'}</div>`;
+          return;
+        }
+
+        const { current = [], archived = [] } = data;
+        
+        if (current.length === 0 && archived.length === 0) {
+          container.innerHTML = `<div style="grid-column: 1 / -1; padding: 2rem; text-align: center;" class="notice">No documents available yet.</div>`;
+          return;
+        }
+
+        let html = '';
+
+        // Render current documents
+        const typeOrder = ['Scoping', 'Architecture', 'Implementation'];
+        const groupedByType = {};
+        
+        current.forEach(doc => {
+          if (!groupedByType[doc.type]) {
+            groupedByType[doc.type] = [];
+          }
+          groupedByType[doc.type].push(doc);
+        });
+
+        typeOrder.forEach(type => {
+          if (groupedByType[type] && groupedByType[type].length > 0) {
+            groupedByType[type].forEach(doc => {
+              html += `
+                <div class="doc-card">
+                  <h3>${escapeHtml(doc.displayName)}</h3>
+                  <p>${escapeHtml(doc.type)} · ${escapeHtml(doc.date)}</p>
+                  <div class="doc-links">
+                    <a href="${escapeHtml(doc.url)}" target="_blank" class="doc-link">View document</a>
+                    <a href="${escapeHtml(doc.url)}" download class="doc-link secondary">Download</a>
+                  </div>
+                </div>
+              `;
+            });
+          }
+        });
+
+        // Render archived documents if any
+        if (archived.length > 0) {
+          html += '<div style="grid-column: 1 / -1; margin-top: 32px; padding-top: 32px; border-top: 1px solid var(--border);"><h2>Archived</h2></div>';
+          archived.forEach(doc => {
+            html += `
+              <div class="doc-card">
+                <h3>${escapeHtml(doc.displayName)}</h3>
+                <p>${escapeHtml(doc.type)} · ${escapeHtml(doc.date)} · <span class="muted">archived</span></p>
+                <div class="doc-links">
+                  <a href="${escapeHtml(doc.url)}" target="_blank" class="doc-link">View document</a>
+                  <a href="${escapeHtml(doc.url)}" download class="doc-link secondary">Download</a>
+                </div>
+              </div>
+            `;
+          });
+        }
+
+        container.innerHTML = html;
+      } catch (err) {
+        container.innerHTML = `<div style="grid-column: 1 / -1; padding: 2rem; text-align: center;" class="notice">Error loading documents: ${err.message}</div>`;
+      }
+    }
+
+    function escapeHtml(text = '') {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    loadDocs();
+  </script>
+</body>
+</html>

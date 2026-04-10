@@ -235,6 +235,8 @@ function renderNavigationShell() {
         <div class="nav-tabs">
           <button type="button" class="nav-tab ${currentView === 'work' ? 'active' : ''}" data-view="work">Work surface</button>
           <button type="button" class="nav-tab ${currentView === 'org' ? 'active' : ''}" data-view="org">Org chart</button>
+          <button type="button" class="nav-tab ${currentView === 'docs' ? 'active' : ''}" data-view="docs">Documentation</button>
+          <a href="/docs" class="nav-tab" target="_self" style="cursor: pointer;">Docs</a>
         </div>
       </div>
     </header>`;
@@ -673,9 +675,12 @@ function renderDashboard(message = '') {
   if (message) {
     pendingNotice = message;
   }
-  const viewMarkup = currentView === 'org'
-    ? renderOrgView()
-    : renderWorkSection(pendingNotice);
+  let viewMarkup = renderWorkSection(pendingNotice);
+  if (currentView === 'org') {
+    viewMarkup = renderOrgView();
+  } else if (currentView === 'docs') {
+    viewMarkup = renderDocsView();
+  }
   if (currentView === 'work') {
     pendingNotice = '';
   }
@@ -686,6 +691,8 @@ function renderDashboard(message = '') {
   mountNavigation();
   if (currentView === 'work') {
     mountWorkHandlers();
+  } else if (currentView === 'docs') {
+    mountDocsHandlers();
   }
 }
 
@@ -785,6 +792,93 @@ async function saveTask(e) {
   } catch (err) {
     renderDashboard(err.message);
   }
+}
+
+function renderDocsView() {
+  return `
+    <main>
+      <div class="container">
+        <h1>Documentation</h1>
+        <div id="docs-loading" style="padding: 2rem; text-align: center;">Loading documents...</div>
+        <div id="docs-content"></div>
+      </div>
+    </main>
+  `;
+}
+
+function mountDocsHandlers() {
+  const docsContent = document.getElementById('docs-content');
+  const docsLoading = document.getElementById('docs-loading');
+  
+  api('/api/docs')
+    .then(data => {
+      docsLoading.style.display = 'none';
+      
+      const { current = [], archived = [] } = data;
+      
+      // Group current documents by type
+      const groupedByType = {};
+      current.forEach(doc => {
+        if (!groupedByType[doc.type]) {
+          groupedByType[doc.type] = [];
+        }
+        groupedByType[doc.type].push(doc);
+      });
+      
+      let html = '<div class="docs-container">';
+      
+      // Render current documents grouped by type
+      const typeOrder = ['Scoping', 'Architecture', 'Implementation'];
+      typeOrder.forEach(type => {
+        if (groupedByType[type]) {
+          html += `<div class="docs-section">`;
+          html += `<h2>${type}</h2>`;
+          html += `<div class="docs-list">`;
+          groupedByType[type].forEach(doc => {
+            html += `
+              <div class="doc-item">
+                <div class="doc-meta">
+                  <a href="${esc(doc.url)}" target="_blank" class="doc-name">${esc(doc.displayName)}</a>
+                  <span class="doc-date">${esc(doc.date)}</span>
+                </div>
+                <a href="${esc(doc.url)}" download class="doc-download">↓ Download</a>
+              </div>
+            `;
+          });
+          html += `</div>`;
+          html += `</div>`;
+        }
+      });
+      
+      // Render archived section if there are archived documents
+      if (archived.length > 0) {
+        html += `<div class="docs-section">`;
+        html += `<details class="docs-archive">`;
+        html += `<summary>📦 Archive (${archived.length} documents)</summary>`;
+        html += `<div class="docs-list" style="margin-top: 1rem;">`;
+        archived.forEach(doc => {
+          html += `
+            <div class="doc-item">
+              <div class="doc-meta">
+                <a href="${esc(doc.url)}" target="_blank" class="doc-name">${esc(doc.displayName)}</a>
+                <span class="doc-date">${esc(doc.date)}</span>
+              </div>
+              <a href="${esc(doc.url)}" download class="doc-download">↓ Download</a>
+            </div>
+          `;
+        });
+        html += `</div>`;
+        html += `</details>`;
+        html += `</div>`;
+      }
+      
+      html += '</div>';
+      docsContent.innerHTML = html;
+    })
+    .catch(err => {
+      docsLoading.style.display = 'none';
+      docsContent.innerHTML = `<div class="error-message">Error loading documents: ${esc(err.message)}</div>`;
+    });
 }
 
 window.startEdit = function(id) {
