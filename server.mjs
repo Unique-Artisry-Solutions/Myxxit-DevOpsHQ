@@ -420,54 +420,92 @@ async function beginDevelopment(taskId, body, actor) {
   );
 }
 
-function getDocuments() {
-  const docsDir = path.join(publicDir, 'documents');
+async function getDocumentsFromGitHub() {
+  const repoOwner = 'Unique-Artisry-Solutions';
+  const repoName = 'Myxxit-DevOpsHQ';
+  const docsPath = 'docs/scoping';
+  const apiUrl = `https://api.github.com/repos/${repoOwner}/${repoName}/contents/${docsPath}`;
+
   const documents = [];
   const now = Date.now();
   const thirtyDaysMs = 30 * 24 * 60 * 60 * 1000;
 
-  function scanDocumentFolder(folderPath, documentType) {
-    if (!fs.existsSync(folderPath)) return;
-    
-    try {
-      const entries = fs.readdirSync(folderPath, { withFileTypes: true });
-      entries.forEach(entry => {
-        if (entry.isFile() && entry.name.endsWith('.pdf')) {
-          const filePath = path.join(folderPath, entry.name);
-          const stats = fs.statSync(filePath);
-          const uploadDate = stats.mtime.getTime();
-          const isArchived = (now - uploadDate) > thirtyDaysMs;
-          
-          documents.push({
-            name: entry.name,
-            displayName: entry.name.replace(/[-_]/g, ' ').replace('.pdf', ''),
-            type: documentType,
-            date: new Date(uploadDate).toISOString().split('T')[0],
-            uploadDate: uploadDate,
-            url: `/documents/${path.relative(docsDir, filePath).replace(/\\/g, '/')}`,
-            isArchived: isArchived,
-          });
-        }
-      });
-    } catch (err) {
-      console.error(`Error scanning folder ${folderPath}:`, err);
+  try {
+    // Fetch list of PDFs from GitHub
+    const response = await fetch(apiUrl, {
+      headers: {
+        'Accept': 'application/vnd.github.v3+json',
+        'User-Agent': 'Node.js/MyxxitBackend',
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`GitHub API returned ${response.status}: ${response.statusText}`);
     }
+
+    const files = await response.json();
+
+    // Process each PDF file
+    for (const file of files) {
+      if (!file.name.endsWith('.pdf')) continue;
+
+      // Get the commit history for this file to find upload date
+      const commitsUrl = `https://api.github.com/repos/${repoOwner}/${repoName}/commits?path=${docsPath}/${file.name}&per_page=1`;
+      const commitResponse = await fetch(commitsUrl, {
+        headers: {
+          'Accept': 'application/vnd.github.v3+json',
+          'User-Agent': 'Node.js/MyxxitBackend',
+        },
+      });
+
+      let uploadDate = new Date().getTime();
+      if (commitResponse.ok) {
+        const commits = await commitResponse.json();
+        if (commits.length > 0) {
+          uploadDate = new Date(commits[0].commit.author.date).getTime();
+        }
+      }
+
+      const isArchived = (now - uploadDate) > thirtyDaysMs;
+      const displayName = file.name
+        .replace(/\.pdf$/, '')
+        .replace(/_/g, ' ')
+        .replace(/-/g, ' ');
+
+      // Infer document type from filename or use default
+      let docType = 'Scoping';
+      if (file.name.includes('ARCHITECTURE')) docType = 'Architecture';
+      if (file.name.includes('IMPLEMENTATION')) docType = 'Implementation';
+      if (file.name.includes('EXECUTIVE')) docType = 'Executive Summary';
+      if (file.name.includes('API')) docType = 'API Specification';
+      if (file.name.includes('DESIGN')) docType = 'Design';
+      if (file.name.includes('HANDOFF')) docType = 'Handoff';
+
+      documents.push({
+        name: file.name,
+        displayName: displayName,
+        type: docType,
+        date: new Date(uploadDate).toISOString().split('T')[0],
+        uploadDate: uploadDate,
+        url: `https://raw.githubusercontent.com/${repoOwner}/${repoName}/main/${docsPath}/${file.name}`,
+        githubUrl: file.html_url,
+        isArchived: isArchived,
+        size: file.size,
+      });
+    }
+
+    // Sort by date descending
+    documents.sort((a, b) => b.uploadDate - a.uploadDate);
+
+    // Separate into current and archived
+    const current = documents.filter(d => !d.isArchived);
+    const archived = documents.filter(d => d.isArchived);
+
+    return { current, archived };
+  } catch (err) {
+    console.error('Error fetching documents from GitHub:', err);
+    return { current: [], archived: [], error: err.message };
   }
-
-  // Scan consolidated monitoring dashboard documents
-  const monitoringDir = path.join(docsDir, 'consolidated-monitoring-dashboard');
-  scanDocumentFolder(path.join(monitoringDir, 'scoping'), 'Scoping');
-  scanDocumentFolder(path.join(monitoringDir, 'architecture'), 'Architecture');
-  scanDocumentFolder(path.join(monitoringDir, 'implementation'), 'Implementation');
-
-  // Sort by date descending
-  documents.sort((a, b) => b.uploadDate - a.uploadDate);
-
-  // Separate into current and archived
-  const current = documents.filter(d => !d.isArchived);
-  const archived = documents.filter(d => d.isArchived);
-
-  return { current, archived };
 }
 
 function routeApi(req, res) {
@@ -585,12 +623,9 @@ function routeApi(req, res) {
   }
 
   if (req.method === 'GET' && url.pathname === '/api/docs') {
-    try {
-      const docs = getDocuments();
-      return sendJson(res, 200, docs);
-    } catch (err) {
-      return sendJson(res, 500, { error: err.message });
-    }
+    return getDocumentsFromGitHub()
+      .then(docs => sendJson(res, 200, docs))
+      .catch(err => sendJson(res, 500, { error: err.message }));
   }
 
   return false;
