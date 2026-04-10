@@ -585,8 +585,6 @@ function routeApi(req, res) {
   }
 
   if (req.method === 'GET' && url.pathname === '/api/docs') {
-    const principal = requireAuth(req, res);
-    if (!principal) return;
     try {
       const docs = getDocuments();
       return sendJson(res, 200, docs);
