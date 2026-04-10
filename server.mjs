@@ -420,6 +420,56 @@ async function beginDevelopment(taskId, body, actor) {
   );
 }
 
+function getDocuments() {
+  const docsDir = path.join(publicDir, 'documents');
+  const documents = [];
+  const now = Date.now();
+  const thirtyDaysMs = 30 * 24 * 60 * 60 * 1000;
+
+  function scanDocumentFolder(folderPath, documentType) {
+    if (!fs.existsSync(folderPath)) return;
+    
+    try {
+      const entries = fs.readdirSync(folderPath, { withFileTypes: true });
+      entries.forEach(entry => {
+        if (entry.isFile() && entry.name.endsWith('.pdf')) {
+          const filePath = path.join(folderPath, entry.name);
+          const stats = fs.statSync(filePath);
+          const uploadDate = stats.mtime.getTime();
+          const isArchived = (now - uploadDate) > thirtyDaysMs;
+          
+          documents.push({
+            name: entry.name,
+            displayName: entry.name.replace(/[-_]/g, ' ').replace('.pdf', ''),
+            type: documentType,
+            date: new Date(uploadDate).toISOString().split('T')[0],
+            uploadDate: uploadDate,
+            url: `/documents/${path.relative(docsDir, filePath).replace(/\\/g, '/')}`,
+            isArchived: isArchived,
+          });
+        }
+      });
+    } catch (err) {
+      console.error(`Error scanning folder ${folderPath}:`, err);
+    }
+  }
+
+  // Scan consolidated monitoring dashboard documents
+  const monitoringDir = path.join(docsDir, 'consolidated-monitoring-dashboard');
+  scanDocumentFolder(path.join(monitoringDir, 'scoping'), 'Scoping');
+  scanDocumentFolder(path.join(monitoringDir, 'architecture'), 'Architecture');
+  scanDocumentFolder(path.join(monitoringDir, 'implementation'), 'Implementation');
+
+  // Sort by date descending
+  documents.sort((a, b) => b.uploadDate - a.uploadDate);
+
+  // Separate into current and archived
+  const current = documents.filter(d => !d.isArchived);
+  const archived = documents.filter(d => d.isArchived);
+
+  return { current, archived };
+}
+
 function routeApi(req, res) {
   const url = new URL(req.url, `http://${req.headers.host}`);
 
@@ -532,6 +582,17 @@ function routeApi(req, res) {
       .then(body => beginDevelopment(taskId, body, principal.username))
       .then(task => sendJson(res, 200, { task }))
       .catch(err => sendJson(res, 400, { error: err.message }));
+  }
+
+  if (req.method === 'GET' && url.pathname === '/api/docs') {
+    const principal = requireAuth(req, res);
+    if (!principal) return;
+    try {
+      const docs = getDocuments();
+      return sendJson(res, 200, docs);
+    } catch (err) {
+      return sendJson(res, 500, { error: err.message });
+    }
   }
 
   return false;
