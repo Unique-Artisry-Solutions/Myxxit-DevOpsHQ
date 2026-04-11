@@ -380,6 +380,19 @@ metadata: { actor: actor || 'system' },
 });
 }
 
+async function transitionTask(taskId, patch, actor, detail, eventType) {
+  const sanitized = sanitizeTask(patch);
+  const { data, error } = await supabase.from('tasks').update(sanitized).eq('id', taskId).select().single();
+  if (error) throw new Error(`Failed to update task: ${error.message}`);
+  const task = mapTaskRow(data);
+  await recordTaskEvent(task.id, {
+    type: eventType || 'status-change',
+    detail,
+    metadata: { actor: actor || 'system' },
+  }).catch(() => {});
+  return task;
+}
+
 async function approveTask(taskId, body, actor) {
   const task = await getTaskRecord(taskId);
   if (task.approval === 'approved' && ['approved', 'completed'].includes(task.status)) {
