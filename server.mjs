@@ -170,7 +170,7 @@ function readBody(req) {
     req.on('error', reject);
   });
 }
-function sanitizeTask(input = {}) {
+function sanitizeTask(input = {}, allowMissingRepo = false) {
 const clampProgress = (value) => {
 if (value === '' || value === null || value === undefined) return 0;
 const num = Number(value);
@@ -185,15 +185,15 @@ const allowedPaths = Array.isArray(allowedPathsRaw)
 const branch = String(input.branch || '').trim();
 const status = String(input.status || 'proposed').trim() || 'proposed';
 
-if (!targetRepo) throw new Error('Target repo is required.');
-if (!['the-drinx-app', 'Myxxit-DevOpsHQ'].includes(targetRepo)) {
-throw new Error('Target repo must be either the-drinx-app or Myxxit-DevOpsHQ.');
+if (!targetRepo && !allowMissingRepo) throw new Error('Target repo is required.');
+if (targetRepo && !['the-drinx-app', 'Myxxit-DevOpsHQ', 'myxxit-app', 'myxxit-devops-hq', 'infrastructure'].includes(targetRepo)) {
+throw new Error('Target repo must be one of: myxxit-app, myxxit-devops-hq, the-drinx-app, infrastructure, or TBD.');
 }
-if (!allowedPaths.length) throw new Error('Allowed paths are required.');
+if (!allowedPaths.length && !allowMissingRepo) throw new Error('Allowed paths are required.');
 if (targetRepo === 'the-drinx-app' && branch && !branch.startsWith('app/')) {
 throw new Error('Main app branches must use the app/ prefix.');
 }
-if (targetRepo === 'Myxxit-DevOpsHQ' && branch && !branch.startsWith('hq/')) {
+if (targetRepo === 'myxxit-devops-hq' && branch && !branch.startsWith('hq/')) {
 throw new Error('DevOps HQ branches must use the hq/ prefix.');
 }
 
@@ -203,8 +203,8 @@ type: String(input.type || 'task').trim() || 'task',
 status,
 risk: String(input.risk || 'low').trim() || 'low',
 branch,
-target_repo: targetRepo,
-allowed_paths: allowedPaths,
+target_repo: targetRepo || null,
+allowed_paths: allowedPaths.length ? allowedPaths : (input.allowed_paths || null),
 owner: String(input.owner || 'Selym').trim() || 'Selym',
 model: String(input.model || '').trim(),
 summary: String(input.summary || '').trim(),
@@ -320,8 +320,8 @@ metadata: { actor: actor || 'system' },
 return task;
 }
 
-async function updateTaskRecord(taskId, input, actor) {
-const sanitized = sanitizeTask(input);
+async function updateTaskRecord(taskId, input, actor, allowMissingRepo = true) {
+const sanitized = sanitizeTask(input, allowMissingRepo);
 if (!sanitized.title) throw new Error('Title is required.');
 const { data, error } = await supabase.from('tasks').update(sanitized).eq('id', taskId).select().single();
 if (error) throw new Error(`Failed to update task: ${error.message}`);
@@ -380,8 +380,8 @@ metadata: { actor: actor || 'system' },
 });
 }
 
-async function transitionTask(taskId, patch, actor, detail, eventType) {
-  const sanitized = sanitizeTask(patch);
+async function transitionTask(taskId, patch, actor, detail, eventType, allowMissingRepo = true) {
+  const sanitized = sanitizeTask(patch, allowMissingRepo);
   const { data, error } = await supabase.from('tasks').update(sanitized).eq('id', taskId).select().single();
   if (error) throw new Error(`Failed to update task: ${error.message}`);
   const task = mapTaskRow(data);
