@@ -400,24 +400,39 @@ async function approveTask(taskId, body, actor) {
     return task;
   }
   const detailNote = String(body?.note || '').trim();
+  
+  // Build patch WITHOUT calling sanitizeTask (which was nullifying target_repo)
   const patch = {
     approval: 'approved',
     status: ['in-progress', 'completed'].includes(task.status) ? task.status : 'approved',
   };
-  // Preserve existing target_repo if present (don't set to null)
+  
+  // Preserve existing target_repo — DO NOT NULLIFY
   if (task.target_repo) {
     patch.target_repo = task.target_repo;
   }
+  
   if (task.progress < 25) patch.progress = 25;
-  // Allow approval even if target_repo is missing (for legacy tasks)
-  return transitionTask(
-    taskId,
-    patch,
-    actor,
-    `${actor || 'system'} approved this task.${detailNote ? ` Note: ${detailNote}` : ''}`.trim(),
-    'approval',
-    true // allowMissingRepo = true
-  );
+  
+  // UPDATE directly without sanitizeTask (which nulls target_repo)
+  const { data, error } = await supabase
+    .from('tasks')
+    .update(patch)
+    .eq('id', taskId)
+    .select()
+    .single();
+  
+  if (error) throw new Error(`Failed to update task: ${error.message}`);
+  
+  const updatedTask = mapTaskRow(data);
+  
+  await recordTaskEvent(updatedTask.id, {
+    type: 'approval',
+    detail: `${actor || 'system'} approved this task.${detailNote ? ` Note: ${detailNote}` : ''}`.trim(),
+    metadata: { actor: actor || 'system' },
+  }).catch(() => {});
+  
+  return updatedTask;
 }
 
 async function beginDevelopment(taskId, body, actor) {
