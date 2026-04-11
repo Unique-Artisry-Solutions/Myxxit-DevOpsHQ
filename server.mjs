@@ -382,8 +382,9 @@ metadata: { actor: actor || 'system' },
 }
 
 async function transitionTask(taskId, patch, actor, detail, eventType, allowMissingRepo = true) {
-  const sanitized = sanitizeTask(patch, allowMissingRepo);
-  const { data, error } = await supabase.from('tasks').update(sanitized).eq('id', taskId).select().single();
+  // Don't call sanitizeTask() for partial updates — it resets unspecified fields to empty strings
+  // Only update the fields explicitly provided in the patch
+  const { data, error } = await supabase.from('tasks').update(patch).eq('id', taskId).select().single();
   if (error) throw new Error(`Failed to update task: ${error.message}`);
   const task = mapTaskRow(data);
   await recordTaskEvent(task.id, {
