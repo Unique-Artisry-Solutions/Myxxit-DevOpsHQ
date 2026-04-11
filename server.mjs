@@ -404,6 +404,10 @@ async function approveTask(taskId, body, actor) {
     approval: 'approved',
     status: ['in-progress', 'completed'].includes(task.status) ? task.status : 'approved',
   };
+  // Preserve existing target_repo if present (don't set to null)
+  if (task.target_repo) {
+    patch.target_repo = task.target_repo;
+  }
   if (task.progress < 25) patch.progress = 25;
   // Allow approval even if target_repo is missing (for legacy tasks)
   return transitionTask(
