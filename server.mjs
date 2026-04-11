@@ -308,6 +308,7 @@ async function fetchRosterEntries() {
 async function createTaskRecord(input, actor) {
 const sanitized = sanitizeTask(input);
 if (!sanitized.title) throw new Error('Title is required.');
+if (!sanitized.target_repo) throw new Error('Target repo is required when creating a new task.');
 const insertPayload = { ...sanitized };
 const { data, error } = await supabase.from('tasks').insert(insertPayload).select().single();
 if (error) throw new Error(`Failed to create task: ${error.message}`);
@@ -404,12 +405,14 @@ async function approveTask(taskId, body, actor) {
     status: ['in-progress', 'completed'].includes(task.status) ? task.status : 'approved',
   };
   if (task.progress < 25) patch.progress = 25;
+  // Allow approval even if target_repo is missing (for legacy tasks)
   return transitionTask(
     taskId,
     patch,
     actor,
     `${actor || 'system'} approved this task.${detailNote ? ` Note: ${detailNote}` : ''}`.trim(),
-    'approval'
+    'approval',
+    true // allowMissingRepo = true
   );
 }
 
@@ -417,6 +420,10 @@ async function beginDevelopment(taskId, body, actor) {
   const task = await getTaskRecord(taskId);
   if (['in-progress', 'completed'].includes(task.status)) {
     return task;
+  }
+  // Require target_repo before starting development
+  if (!task.target_repo) {
+    throw new Error('Target repo is required to begin development. Please update the task first.');
   }
   const detailNote = String(body?.note || '').trim();
   const patch = {
@@ -429,7 +436,8 @@ async function beginDevelopment(taskId, body, actor) {
     patch,
     actor,
     `${actor || 'system'} began development on this task.${detailNote ? ` Note: ${detailNote}` : ''}`.trim(),
-    'status-change'
+    'status-change',
+    false // Do NOT allow missing repo for in-progress transition
   );
 }
 
