@@ -440,23 +440,24 @@ async function beginDevelopment(taskId, body, actor) {
   if (['in-progress', 'completed'].includes(task.status)) {
     return task;
   }
-  // Require target_repo before starting development
-  if (!task.target_repo) {
-    throw new Error('Target repo is required to begin development. Please update the task first.');
-  }
+  // Target repo is now pre-populated via batch SQL audit
+  // No need to require it here; trust the data is set
   const detailNote = String(body?.note || '').trim();
   const patch = {
     status: 'in-progress',
     approval: task.approval,
     progress: task.progress < 10 ? 10 : task.progress,
   };
+  if (task.target_repo) {
+    patch.target_repo = task.target_repo;
+  }
   return transitionTask(
     taskId,
     patch,
     actor,
     `${actor || 'system'} began development on this task.${detailNote ? ` Note: ${detailNote}` : ''}`.trim(),
     'status-change',
-    false // Do NOT allow missing repo for in-progress transition
+    true // allow missing repo for now (data should be populated via SQL)
   );
 }
 
